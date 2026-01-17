@@ -108,3 +108,52 @@ class ProbeRegimen:
       predictions = probe(word_representations)
       predictions_by_batch.append(predictions.detach().cpu().numpy())
     return predictions_by_batch
+
+
+class PolarProbeRegimen(ProbeRegimen):
+  """Training regimen for Polar Probe with angular loss."""
+
+  def train_until_convergence(self, probe, model, loss, train_dataset, dev_dataset):
+    self.set_optimizer(probe)
+    min_dev_loss = sys.maxsize
+    min_dev_loss_epoch = -1
+    for epoch_index in tqdm(range(self.max_epochs), desc='[training]'):
+      epoch_train_loss = 0
+      epoch_dev_loss = 0
+      epoch_train_loss_count = 0
+      epoch_dev_loss_count = 0
+      for batch in tqdm(train_dataset, desc='[training batch]'):
+        probe.train()
+        self.optimizer.zero_grad()
+        data_batch, label_batch, length_batch, observation_batch = batch
+        word_representations = model(data_batch)
+        predictions = probe(word_representations)
+        projected = probe.project(word_representations)
+        batch_loss, count = loss(predictions, label_batch, length_batch, observation_batch, projected)
+        batch_loss.backward()
+        epoch_train_loss += batch_loss.detach().cpu().numpy() * count.detach().cpu().numpy()
+        epoch_train_loss_count += count.detach().cpu().numpy()
+        self.optimizer.step()
+      for batch in tqdm(dev_dataset, desc='[dev batch]'):
+        self.optimizer.zero_grad()
+        probe.eval()
+        data_batch, label_batch, length_batch, observation_batch = batch
+        word_representations = model(data_batch)
+        predictions = probe(word_representations)
+        projected = probe.project(word_representations)
+        batch_loss, count = loss(predictions, label_batch, length_batch, observation_batch, projected)
+        epoch_dev_loss += batch_loss.detach().cpu().numpy() * count.detach().cpu().numpy()
+        epoch_dev_loss_count += count.detach().cpu().numpy()
+      self.scheduler.step(epoch_dev_loss)
+      tqdm.write('[epoch {}] Train loss: {}, Dev loss: {}'.format(
+          epoch_index,
+          epoch_train_loss / epoch_train_loss_count if epoch_train_loss_count else 0.0,
+          epoch_dev_loss / epoch_dev_loss_count if epoch_dev_loss_count else 0.0))
+      if epoch_dev_loss_count and (epoch_dev_loss / epoch_dev_loss_count < min_dev_loss - 0.0001):
+        torch.save(probe.state_dict(), self.params_path)
+        min_dev_loss = epoch_dev_loss / epoch_dev_loss_count
+        min_dev_loss_epoch = epoch_index
+        tqdm.write('Saving probe parameters')
+      elif min_dev_loss_epoch < epoch_index - 4:
+        tqdm.write('Early stopping')
+        break

@@ -9,7 +9,7 @@ END_LAYER=$3
 
 if [ -z "$CONFIG_FILE" ] || [ -z "$START_LAYER" ] || [ -z "$END_LAYER" ]; then
     echo "Usage: bash run_layers.sh [config_file] [start_layer] [end_layer]"
-    echo "Example: bash run_layers.sh configs/gemma/3-4b/english.yaml 0 15"
+    echo "Example: bash run_layers.sh configs/gemma/3-1b/english.yaml 0 25"
     exit 1
 fi
 

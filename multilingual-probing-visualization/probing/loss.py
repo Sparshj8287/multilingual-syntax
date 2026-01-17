@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import tqdm
 
 class L1DistanceLoss(nn.Module):
@@ -104,3 +105,71 @@ class CrossEntropyLoss(nn.Module):
     #  label_batch = label_batch.view(batchlen*seqlen*seqlen).float()
     #  cross_entropy_loss = self.pytorch_bce_loss(predictions, label_batch)
     return cross_entropy_loss, total_sents
+
+
+class PolarProbeLoss(nn.Module):
+  """Joint distance + angular loss for Polar Probe."""
+
+  def __init__(self, args):
+    super(PolarProbeLoss, self).__init__()
+    self.args = args
+    self.distance_loss = L1DistanceLoss(args)
+    self.angular_lambda = args['probe_training'].get('angular_lambda',
+        args.get('probe', {}).get('angular_lambda', 0.5))
+    self.mse_loss = nn.MSELoss()
+
+  def angular_loss(self, projected_batch, observation_batch, length_batch):
+    edges = []
+    rels = []
+    device = projected_batch.device
+
+    for sent_index, (observation, _) in enumerate(observation_batch):
+      length = int(length_batch[sent_index].item())
+      head_indices = observation.head_indices[:length]
+      rel_labels = observation.governance_relations[:length] if observation.governance_relations else []
+      for dep_index, head in enumerate(head_indices):
+        if head in (None, '_'):
+          continue
+        try:
+          head_index = int(head)
+        except (TypeError, ValueError):
+          continue
+        if head_index == 0 or head_index > length:
+          continue
+        rel = rel_labels[dep_index] if rel_labels else None
+        if rel in (None, '_'):
+          continue
+        rel = rel.split(':')[0]
+        edge = projected_batch[sent_index, head_index - 1] - projected_batch[sent_index, dep_index]
+        edges.append(edge)
+        rels.append(rel)
+
+    if len(edges) < 2:
+      return torch.tensor(0.0, device=device)
+
+    edges = torch.stack(edges)
+    unique_rels = sorted(set(rels))
+    rel_to_idx = {rel: i for i, rel in enumerate(unique_rels)}
+    rels_tensor = torch.tensor([rel_to_idx[rel] for rel in rels], device=device)
+
+    sorted_indices = torch.argsort(rels_tensor)
+    rels_tensor = rels_tensor[sorted_indices]
+    edges = edges[sorted_indices]
+
+    norm_edges = F.normalize(edges, p=2, dim=1)
+    cos_sim_mat = torch.mm(norm_edges, norm_edges.t())
+    cos_dist_mat = 1 - cos_sim_mat
+    cos_dist_mat = torch.clamp(cos_dist_mat, min=0.0, max=2.0)
+
+    gold_mat = torch.ones_like(cos_dist_mat)
+    for rel in torch.unique(rels_tensor):
+      indices = (rels_tensor == rel).nonzero(as_tuple=True)[0]
+      gold_mat[indices[:, None], indices] = 0
+
+    return self.mse_loss(cos_dist_mat, gold_mat)
+
+  def forward(self, predictions, label_batch, length_batch, observation_batch, projected_batch):
+    dist_loss, total_sents = self.distance_loss(predictions, label_batch, length_batch)
+    ang_loss = self.angular_loss(projected_batch, observation_batch, length_batch)
+    total_loss = dist_loss + (self.angular_lambda * ang_loss)
+    return total_loss, total_sents

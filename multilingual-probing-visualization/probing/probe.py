@@ -46,6 +46,36 @@ class TwoWordPSDProbe(Probe):
     return squared_distances
 
 
+class PolarProbe(Probe):
+  """Computes squared L2 distance and exposes projected representations."""
+
+  def __init__(self, args):
+    print('Constructing PolarProbe')
+    super(PolarProbe, self).__init__()
+    self.args = args
+    self.probe_rank = args['probe']['maximum_rank']
+    self.model_dim = args['model']['hidden_dim']
+    self.proj = nn.Parameter(data = torch.zeros(self.model_dim, self.probe_rank))
+    nn.init.uniform_(self.proj, -0.05, 0.05)
+    self.to(args['device'])
+
+  def project(self, batch):
+    """Projects word representations with the probe matrix."""
+    return torch.matmul(batch, self.proj)
+
+  def forward(self, batch):
+    """Computes all n^2 squared distances after projection."""
+    transformed = self.project(batch)
+    batchlen, seqlen, rank = transformed.size()
+    transformed = transformed.unsqueeze(2)
+    transformed = transformed.expand(-1, -1, seqlen, -1)
+    transposed = transformed.transpose(1,2)
+    diffs = transformed - transposed
+    squared_diffs = diffs.pow(2)
+    squared_distances = torch.sum(squared_diffs, -1)
+    return squared_distances
+
+
 
 class OneWordPSDProbe(Probe):
   """ Computes squared L2 norm of words after projection by a matrix."""

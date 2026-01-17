@@ -10,6 +10,9 @@ from scipy.stats import spearmanr, pearsonr
 import numpy as np
 import json
 import sklearn.metrics
+from sklearn.neighbors import KNeighborsClassifier
+import networkx as nx
+import torch.nn.functional as F
 import torch
 import h5py
 
@@ -33,6 +36,10 @@ class Reporter:
 
   def __init__(self, args):
     raise NotImplementedError("Inherit from this class and override __init__")
+
+  def set_dataset(self, dataset):
+    """Stores the dataset for reporters that need train/dev/test access."""
+    self.dataset = dataset
 
   def __call__(self, prediction_batches, probe, model, dataloader, split_name):
     """
@@ -697,6 +704,258 @@ class WordPairReporter(Reporter):
       string += '\\end{dependency}\n'
       fout.write('\n\n')
       fout.write(string)
+
+
+class PolarProbeReporter(WordPairReporter):
+  """Reporting class for Polar Probe metrics."""
+
+  def __init__(self, args):
+    super(PolarProbeReporter, self).__init__(args)
+    self.reporting_method_dict.update({
+        'polar_metrics': self.report_polar_metrics,
+    })
+    self.test_reporting_constraint = self.test_reporting_constraint.union({'polar_metrics'})
+    self._centroid_cache = None
+
+  def _extract_edges(self, projected_sent, observation, length, only_head=False):
+    edges = []
+    rels = []
+    head_indices = observation.head_indices[:length]
+    rel_labels = observation.governance_relations[:length] if observation.governance_relations else []
+    for dep_index, head in enumerate(head_indices):
+      if head in (None, '_'):
+        continue
+      try:
+        head_index = int(head)
+      except (TypeError, ValueError):
+        continue
+      if head_index == 0 or head_index > length:
+        continue
+      rel = rel_labels[dep_index] if rel_labels else None
+      if rel in (None, '_'):
+        continue
+      rel = rel.split(':')[0]
+      if only_head:
+        edge = projected_sent[head_index - 1]
+      else:
+        edge = projected_sent[head_index - 1] - projected_sent[dep_index]
+      edges.append(edge)
+      rels.append(rel)
+    return edges, rels
+
+  def _collect_edges(self, dataloader, only_head=False):
+    all_edges = []
+    all_rels = []
+    self.model.eval()
+    self.probe.eval()
+    with torch.no_grad():
+      for data_batch, _, length_batch, observation_batch in dataloader:
+        word_representations = self.model(data_batch)
+        projected = self.probe.project(word_representations)
+        for projected_sent, length, (observation, _) in zip(projected, length_batch, observation_batch):
+          length = int(length)
+          edges, rels = self._extract_edges(projected_sent[:length], observation, length, only_head=only_head)
+          if edges:
+            all_edges.extend(edges)
+            all_rels.extend(rels)
+    if not all_edges:
+      return None, []
+    return torch.stack(all_edges), all_rels
+
+  def _compute_centroids(self, dataloader):
+    edges, rels = self._collect_edges(dataloader)
+    if edges is None:
+      return None, None, {}
+    unique_rels = sorted(set(rels))
+    mapping = {string: i for i, string in enumerate(unique_rels)}
+    rel_tensor = torch.tensor([mapping[string] for string in rels])
+    centroids = []
+    centroid_rels = []
+    for rel in torch.unique(rel_tensor):
+      rel_indices = rel_tensor == rel
+      centroid = edges[rel_indices].mean(0)
+      centroids.append(centroid.detach().cpu())
+      centroid_rels.append(rel.detach().cpu())
+    centroids = torch.vstack(centroids)
+    centroid_rels = torch.tensor(centroid_rels)
+    return centroids, centroid_rels, mapping
+
+  def _get_centroids(self, fallback_dataloader):
+    if self._centroid_cache is not None:
+      return self._centroid_cache
+    train_dataloader = None
+    if hasattr(self, 'dataset') and hasattr(self.dataset, 'get_train_dataloader'):
+      try:
+        train_dataloader = self.dataset.get_train_dataloader(shuffle=False)
+      except Exception:
+        train_dataloader = None
+    if train_dataloader is None or len(getattr(self.dataset, 'train_dataset', [])) == 0:
+      train_dataloader = fallback_dataloader
+    self._centroid_cache = self._compute_centroids(train_dataloader)
+    return self._centroid_cache
+
+  def _construct_knn(self, centroids, centroid_rels, metric="cosine"):
+    X_cen = centroids.detach().cpu().numpy()
+    y_cen = centroid_rels.detach().cpu().numpy()
+    knn_model = KNeighborsClassifier(n_neighbors=1, metric=metric)
+    knn_model.fit(X_cen, y_cen)
+    return knn_model
+
+  def _evaluate_knn(self, knn_model, X, y, mapping, metric):
+    y = [mapping.get(string, -1) for string in y]
+    y = torch.tensor(y)
+    X = X.detach().cpu().numpy()
+    y = y.detach().cpu().numpy()
+    y_pred = knn_model.predict(X)
+    return metric(y, y_pred)
+
+  def _abs_sim_dist(self, x, y):
+    denom = np.linalg.norm(x) * np.linalg.norm(y)
+    if denom == 0:
+      return 1.0
+    cos_sim = np.dot(x, y) / denom
+    return 1 - np.abs(cos_sim)
+
+  def _compute_mst(self, distance_matrix):
+    G = nx.Graph()
+    num_vertices = len(distance_matrix)
+    for i in range(num_vertices):
+      for j in range(i + 1, num_vertices):
+        G.add_edge(i + 1, j + 1, weight=float(distance_matrix[i, j]))
+    return nx.minimum_spanning_tree(G)
+
+  def _compute_labeled_mst(self, mst, rel_preds):
+    for edge, rel in zip(mst.edges(), rel_preds):
+      mst.edges[edge]["rel_type"] = rel
+    return mst
+
+  def _compute_directed_mst(self, mst, edge_vectors, centroids, rel_pred_nums, rel_preds):
+    directed_mst = nx.DiGraph()
+    for edge, edge_vec, rel_num, rel_name in zip(mst.edges(), edge_vectors, rel_pred_nums, rel_preds):
+      u, v = edge
+      centroid = centroids[rel_num]
+      edge_norm = F.normalize(edge_vec, p=2, dim=0)
+      centroid_norm = F.normalize(centroid, p=2, dim=0)
+      cos_sim = torch.dot(edge_norm, centroid_norm).item()
+      if cos_sim > 0:
+        directed_mst.add_edge(u, v, rel_type=rel_name)
+      else:
+        directed_mst.add_edge(v, u, rel_type=rel_name)
+    return directed_mst
+
+  def _gold_edge_sets(self, observation, length):
+    gold_labeled = set()
+    gold_directed = set()
+    gold_undirected = set()
+    head_indices = observation.head_indices[:length]
+    rel_labels = observation.governance_relations[:length] if observation.governance_relations else []
+    for dep_index, head in enumerate(head_indices):
+      if head in (None, '_'):
+        continue
+      try:
+        head_index = int(head)
+      except (TypeError, ValueError):
+        continue
+      if head_index == 0 or head_index > length:
+        continue
+      rel = rel_labels[dep_index] if rel_labels else None
+      if rel in (None, '_'):
+        continue
+      rel = rel.split(':')[0]
+      dep_id = dep_index + 1
+      gold_labeled.add((head_index, dep_id, rel))
+      gold_directed.add((head_index, dep_id))
+      gold_undirected.add((min(head_index, dep_id), max(head_index, dep_id)))
+    return gold_labeled, gold_directed, gold_undirected
+
+  def _evaluate_spr_dist(self, prediction_batches, dataset):
+    spr_dist = []
+    for prediction_batch, (data_batch, label_batch, length_batch, observation_batch) in zip(prediction_batches, dataset):
+      for prediction, label, length in zip(prediction_batch, label_batch, length_batch):
+        length = int(length)
+        pred = prediction[:length, :length].flatten()
+        gold = label[:length, :length].cpu().numpy().flatten()
+        correlation = spearmanr(pred, gold).correlation
+        if correlation is not None and not np.isnan(correlation):
+          spr_dist.append(correlation)
+    return float(np.mean(spr_dist)) if spr_dist else 0.0
+
+  def _evaluate_relation_accuracy(self, dataset, centroids, centroid_rels, mapping):
+    edges, rels = self._collect_edges(dataset)
+    if edges is None:
+      return 0.0, 0.0
+    knn_model = self._construct_knn(centroids, centroid_rels)
+    acc = self._evaluate_knn(knn_model, edges, rels, mapping, sklearn.metrics.accuracy_score)
+    balanced_acc = self._evaluate_knn(knn_model, edges, rels, mapping, sklearn.metrics.balanced_accuracy_score)
+    return acc, balanced_acc
+
+  def _evaluate_las_uas_uuas(self, prediction_batches, dataset, centroids, centroid_rels, mapping):
+    inverse_mapping = {value: key for key, value in mapping.items()}
+    knn_model = self._construct_knn(centroids, centroid_rels, metric=self._abs_sim_dist)
+    las_list = []
+    uas_list = []
+    uuas_list = []
+    self.model.eval()
+    self.probe.eval()
+    with torch.no_grad():
+      for prediction_batch, (data_batch, _, length_batch, observation_batch) in zip(prediction_batches, dataset):
+        word_representations = self.model(data_batch)
+        projected = self.probe.project(word_representations).detach().cpu()
+        for prediction, length, (observation, _) , projected_sent in zip(
+            prediction_batch, length_batch, observation_batch, projected):
+          length = int(length)
+          if length < 2:
+            continue
+          mst = self._compute_mst(prediction[:length, :length])
+          edge_vectors = []
+          for edge in mst.edges():
+            u, v = edge
+            edge_vectors.append(projected_sent[u - 1] - projected_sent[v - 1])
+          if not edge_vectors:
+            continue
+          edge_vectors = torch.stack(edge_vectors)
+          rel_pred_nums = knn_model.predict(edge_vectors.numpy())
+          rel_preds = [inverse_mapping.get(rel_num, None) for rel_num in rel_pred_nums]
+          mst = self._compute_labeled_mst(mst, rel_preds)
+          directed_mst = self._compute_directed_mst(mst, edge_vectors, centroids, rel_pred_nums, rel_preds)
+          gold_labeled, gold_directed, gold_undirected = self._gold_edge_sets(observation, length)
+          if not gold_directed:
+            continue
+          pred_labeled = {(u, v, d['rel_type']) for u, v, d in directed_mst.edges(data=True)}
+          pred_directed = {(u, v) for u, v, d in directed_mst.edges(data=True)}
+          pred_undirected = {(min(u, v), max(u, v)) for u, v in directed_mst.edges(data=False)}
+          las_list.append((len(gold_labeled.intersection(pred_labeled)) / len(gold_labeled)) * 100)
+          uas_list.append((len(gold_directed.intersection(pred_directed)) / len(gold_directed)) * 100)
+          uuas_list.append((len(gold_undirected.intersection(pred_undirected)) / len(gold_undirected)) * 100)
+    las = float(np.mean(las_list)) if las_list else 0.0
+    uas = float(np.mean(uas_list)) if uas_list else 0.0
+    uuas = float(np.mean(uuas_list)) if uuas_list else 0.0
+    return las, uas, uuas
+
+  def report_polar_metrics(self, prediction_batches, dataset, split_name):
+    centroids, centroid_rels, mapping = self._get_centroids(dataset)
+    if centroids is None:
+      tqdm.write("[polar] No edges found; skipping metrics.")
+      return
+    spr_dist = self._evaluate_spr_dist(prediction_batches, dataset)
+    acc, balanced_acc = self._evaluate_relation_accuracy(dataset, centroids, centroid_rels, mapping)
+    las, uas, uuas = self._evaluate_las_uas_uuas(prediction_batches, dataset, centroids, centroid_rels, mapping)
+    metrics = {
+        "spr_dist": spr_dist,
+        "acc": acc,
+        "balanced_acc": balanced_acc,
+        "las": las,
+        "uas": uas,
+        "uuas": uuas,
+    }
+    polar_root = os.path.join(self.reporting_root, "polar_results")
+    os.makedirs(polar_root, exist_ok=True)
+    for metric_name, metric_value in metrics.items():
+      with open(os.path.join(polar_root, split_name + '.' + metric_name), 'w') as fout:
+        fout.write(str(metric_value) + '\n')
+    tqdm.write("[polar metrics] split={} spr_dist={} acc={} balanced_acc={} las={} uas={} uuas={}".format(
+        split_name, spr_dist, acc, balanced_acc, las, uas, uuas))
+
 
 class WordReporter(Reporter):
   """Reporting class for single-word (depth) tasks"""

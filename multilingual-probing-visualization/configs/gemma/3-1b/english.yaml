@@ -44,11 +44,13 @@ probe:
   psd_parameters: True
   diagonal: False
   params_path: predictor.params
+  use_polar: True
 probe_training:
   epochs: 30
   loss: L1
+  angular_lambda: 10
 reporting:
-  root: experiments/gemma-3-4b/en
+  root: experiments/gemma-3-1b/en
   observation_paths:
     train_path: train.observations
     dev_path: dev.observations
@@ -60,3 +62,4 @@ reporting:
   reporting_methods:
     - spearmanr
     - uuas
+    - polar_metrics

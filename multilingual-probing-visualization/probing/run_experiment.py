@@ -16,6 +16,9 @@ import reporter
 import task
 import loss
 
+def is_polar_probe(args):
+  return args.get('probe', {}).get('use_polar', False)
+
 def choose_task_classes(args):
   """Chooses which task class to use based on config.
 
@@ -26,12 +29,22 @@ def choose_task_classes(args):
   """
   if args['probe']['task_name'] == 'parse-distance':
     task_class = task.ParseDistanceTask
-    reporter_class = reporter.WordPairReporter
-    if args['probe_training']['loss'] == 'L1':
-      loss_class = loss.L1DistanceLoss
+    if is_polar_probe(args):
+      reporter_class = reporter.PolarProbeReporter
+      loss_class = loss.PolarProbeLoss
+      reporting_methods = args['reporting'].get('reporting_methods', [])
+      if 'polar_metrics' not in reporting_methods:
+        reporting_methods.append('polar_metrics')
+      args['reporting']['reporting_methods'] = reporting_methods
     else:
-      raise ValueError("Unknown loss type for given probe type: {}".format(
-        args['probe_training']['loss']))
+      reporter_class = reporter.WordPairReporter
+      reporting_methods = [m for m in args['reporting'].get('reporting_methods', []) if m != 'polar_metrics']
+      args['reporting']['reporting_methods'] = reporting_methods
+      if args['probe_training']['loss'] == 'L1':
+        loss_class = loss.L1DistanceLoss
+      else:
+        raise ValueError("Unknown loss type for given probe type: {}".format(
+          args['probe_training']['loss']))
   elif args['probe']['task_name'] == 'parse-depth':
     task_class = task.ParseDepthTask
     reporter_class = reporter.WordReporter
@@ -81,12 +94,16 @@ def choose_probe_class(args):
   Returns:
     A probe_class to be instantiated.
   """
+  if is_polar_probe(args) and args['probe']['task_signature'] != 'word_pair':
+    raise ValueError("Polar probe requires task_signature 'word_pair'")
   if args['probe']['task_signature'] == 'word':
     if args['probe']['psd_parameters']:
       return probe.OneWordPSDProbe
     else:
       return probe.OneWordNonPSDProbe
   elif args['probe']['task_signature'] == 'word_pair':
+    if is_polar_probe(args):
+      return probe.PolarProbe
     if args['probe']['psd_parameters']:
       return probe.TwoWordPSDProbe
     else:
@@ -123,6 +140,11 @@ def choose_model_class(args):
   else:
     raise ValueError("Unknown model type: {}".format(
       args['model']['model_type']))
+
+def choose_regimen_class(args):
+  if is_polar_probe(args):
+    return regimen.PolarProbeRegimen
+  return regimen.ProbeRegimen
 
 def run_train_probe(args, probe, dataset, model, loss, reporter, regimen):
   """Trains a structural probe according to args.
@@ -190,7 +212,7 @@ def execute_experiment(args, train_probe, report_results):
   task_class, reporter_class, loss_class = choose_task_classes(args)
   probe_class = choose_probe_class(args)
   model_class = choose_model_class(args)
-  regimen_class = regimen.ProbeRegimen
+  regimen_class = choose_regimen_class(args)
 
   task = task_class()
   expt_dataset = dataset_class(args, task)
@@ -199,6 +221,8 @@ def execute_experiment(args, train_probe, report_results):
     dev_count = len(expt_dataset.dev_dataset)
     tqdm.write('[Step] Dataset ready (train: {}, dev: {})'.format(train_count, dev_count))
   expt_reporter = reporter_class(args)
+  if hasattr(expt_reporter, 'set_dataset'):
+    expt_reporter.set_dataset(expt_dataset)
   expt_probe = probe_class(args)
   expt_model = model_class(args)
   expt_regimen = regimen_class(args)
@@ -226,9 +250,8 @@ def setup_new_experiment_dir(args, yaml_args, reuse_results_path):
   """
   now = datetime.now()
   date_suffix = '-'.join((str(x) for x in [now.year, now.month, now.day, now.hour, now.minute, now.second, now.microsecond]))
-  model_suffix = '-'.join((yaml_args['model']['model_type'], yaml_args['probe']['task_name']))
-  print(model_suffix)
-  breakpoint()
+  model_layer = str(yaml_args['model']['model_layer'])
+  model_suffix = '-'.join(("model-layer", model_layer, yaml_args['probe']['task_name']))
   if reuse_results_path:
     new_root = reuse_results_path
     tqdm.write('Reusing old results directory at {}'.format(new_root))

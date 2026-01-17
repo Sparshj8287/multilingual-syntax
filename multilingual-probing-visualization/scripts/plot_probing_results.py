@@ -84,7 +84,7 @@ def main():
 
             plt.figure(figsize=(12, 6))
             plt.plot(layers, values, marker='o', linestyle='-', color='b')
-            plt.title(f'Layer vs {args.metric_file}')
+            plt.title(f'Layer vs {args.metric_file} for {model_name} on {task_name}')
             plt.xlabel('Layer Number')
             plt.ylabel(args.metric_file)
             plt.grid(True)
