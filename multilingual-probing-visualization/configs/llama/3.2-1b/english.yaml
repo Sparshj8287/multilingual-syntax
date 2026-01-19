@@ -26,16 +26,17 @@ model:
   hidden_dim: 3072            
   model_type: decoder-transformer-lens
   use_disk: True
-  model_layer: 0
+  model_layer: 16
 decoder_model:
   model_name: meta-llama/Llama-3.2-1B
   activation_name: resid_post
-  layer: 0
-  batch_size: 256
+  layer: 16
+  batch_size: 64
   dtype: bfloat16
   padding_side: right
+  use_vendor_transformer_lens: True
   cache_dir: /home/sparsh/.cache/huggingface
-  local_path: /home/models/Llama-3.2-1B  
+  local_path: none
 probe:
   task_signature: word_pair
   task_name: parse-distance
@@ -43,9 +44,11 @@ probe:
   psd_parameters: True
   diagonal: False
   params_path: predictor.params
+  use_polar: True
 probe_training:
   epochs: 30
   loss: L1
+  angular_lambda: 10
 reporting:
   root: experiments/llama-3p2-1b/en
   observation_paths:
@@ -59,3 +62,4 @@ reporting:
   reporting_methods:
     - spearmanr
     - uuas
+    - polar_metrics

@@ -18,7 +18,7 @@ def main():
             base_dir = os.path.abspath(base_dir)
             model_name = base_dir.split('/')[-2]
             task_name = base_dir.split('/')[-1]
-            output_dir = os.path.join(script_dir, '../visualizations_plots', model_name, task_name)
+            output_dir = os.path.join(script_dir, '../visualizations_plots', model_name, task_name, "polar_results")
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
@@ -52,9 +52,13 @@ def main():
                 
                 layer_num = int(match.group(1))
 
-                metric_path = os.path.join(subdir, args.metric_file)
+                metric_path = os.path.join(subdir, 'polar_results', args.metric_file)
                 if not os.path.exists(metric_path):
-                    print(f"Metric file {args.metric_file} not found in {subdir}, skipping.")
+                    # Check in polar_results subdirectory
+                    metric_path = os.path.join(subdir, args.metric_file)
+                    
+                if not os.path.exists(metric_path):
+                    print(f"Metric file {args.metric_file} not found in {subdir} or {subdir}/polar_results, skipping.")
                     continue
 
                 try:

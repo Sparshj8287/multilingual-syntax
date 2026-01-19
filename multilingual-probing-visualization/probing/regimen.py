@@ -28,7 +28,7 @@ class ProbeRegimen:
     Args:
       probe: the probe PyTorch model the optimizer should act on.
     """
-    self.optimizer = optim.Adam(probe.parameters(), lr=0.001)
+    self.optimizer = optim.Adam(probe.parameters(), lr=0.005)
     self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1,patience=0)
 
   def train_until_convergence(self, probe, model, loss, train_dataset, dev_dataset):

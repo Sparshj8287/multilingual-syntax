@@ -7,6 +7,7 @@ import yaml
 from tqdm import tqdm
 import torch
 import numpy as np
+import random
 
 import data
 import model
@@ -282,12 +283,14 @@ if __name__ == '__main__':
   argp.add_argument('--report-results', default=1, type=int,
       help='Set to report results; '
       '(optionally after training a new probe)')
-  argp.add_argument('--seed', default=0, type=int,
+  argp.add_argument('--seed', default=42, type=int,
       help='sets all random seeds for (within-machine) reproducibility')
   cli_args = argp.parse_args()
-  if cli_args.seed:
+  if cli_args.seed is not None:
+    random.seed(cli_args.seed)
     np.random.seed(cli_args.seed)
     torch.manual_seed(cli_args.seed)
+    torch.cuda.manual_seed_all(cli_args.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 

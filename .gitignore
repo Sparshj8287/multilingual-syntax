@@ -8,6 +8,9 @@ datasets/
 # ------------------------------------------------------------------
 structural-probes/
 polar_probe/
+experiments/
+visualizations_plots/
+experiments_struct_probe/
 
 # ------------------------------------------------------------------
 # Python
