@@ -2,6 +2,7 @@
 # Data artifacts generated locally (downloaded UD treebanks, etc.)
 # ------------------------------------------------------------------
 datasets/
+activations/
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo
@@ -11,7 +12,8 @@ polar_probe/
 experiments/
 visualizations_plots/
 experiments_struct_probe/
-
+temp*.yaml
+output*.txt
 # ------------------------------------------------------------------
 # Python
 # ------------------------------------------------------------------

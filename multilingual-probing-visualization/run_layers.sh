@@ -1,11 +1,14 @@
 #!/bin/bash
 
-# Usage: bash run_layers.sh [config_file] [start_layer] [end_layer]
-# Example: bash run_layers.sh configs/llama/3.2-1b/english.yaml 0 15
+# Usage: bash run_layers.sh [config_file] [start_layer] [end_layer] [mode] [extra args...]
+# Example: bash run_layers.sh configs/gemma/3-1b/english.yaml 0 25
+# Example (multilingual): bash run_layers.sh configs/gemma/3-1b/structural/base.yaml 0 25 multilang --experiments in_lang,holdout
 
 CONFIG_FILE=$1
 START_LAYER=$2
 END_LAYER=$3
+MODE=$4
+EXTRA_ARGS="${@:5}"
 
 if [ -z "$CONFIG_FILE" ] || [ -z "$START_LAYER" ] || [ -z "$END_LAYER" ]; then
     echo "Usage: bash run_layers.sh [config_file] [start_layer] [end_layer]"
@@ -34,7 +37,11 @@ do
     # Modify the output root directory to include the layer number
     # This prevents all layers from dumping into the same parent folder
     # Read the original root from the config (e.g., experiments/llama-3p1-1b/en)
-    python3 probing/run_experiment.py "$TEMP_CONFIG"
+    if [ "$MODE" = "multilang" ]; then
+        python3 probing/run_multilingual_experiments.py --config "$TEMP_CONFIG" $EXTRA_ARGS
+    else
+        python3 probing/run_experiment.py "$TEMP_CONFIG"
+    fi
 
     # Cleanup
     rm "$TEMP_CONFIG"

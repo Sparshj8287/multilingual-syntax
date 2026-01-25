@@ -1,0 +1,86 @@
+dataset:
+  observation_fieldnames:
+  - index
+  - sentence
+  - lemma_sentence
+  - upos_sentence
+  - xpos_sentence
+  - morph
+  - head_indices
+  - governance_relations
+  - secondary_relations
+  - extra_info
+  - langs
+  - embeddings
+  corpus:
+    root: datasets
+    train_path: train.conllu
+    dev_path: dev.conllu
+    test_path: test.conllu
+  embeddings:
+    format: torch
+    by_key: true
+    root: activations/{model}/{activation}/layer-{layer}
+    train_path: '{lang}/train.pt'
+    dev_path: '{lang}/dev.pt'
+    test_path: '{lang}/test.pt'
+  keys:
+    train:
+    - hi
+    dev:
+    - zh
+    test:
+    - zh
+  batch_size: 64
+model:
+  hidden_dim: 3072
+  model_type: decoder-transformer-lens
+  use_disk: true
+  model_layer: 1
+decoder_model:
+  model_name: google/gemma-3-1b-pt
+  activation_name: resid_post
+  layer: 1
+  batch_size: 64
+  dtype: bfloat16
+  padding_side: right
+  use_vendor_transformer_lens: true
+  cache_dir: /home/sparsh/.cache/huggingface
+  local_path: none
+probe:
+  task_signature: word_pair
+  task_name: parse-distance
+  maximum_rank: 128
+  psd_parameters: true
+  diagonal: false
+  params_path: predictor.params
+  use_polar: false
+probe_training:
+  epochs: 30
+  loss: L1
+reporting:
+  root: experiments/gemma-3-1b/zh/single_train/train-hi/layer-1
+  observation_paths:
+    train_path: train.observations
+    dev_path: dev.observations
+    test_path: test.observations
+  prediction_paths:
+    train_path: train.predictions
+    dev_path: dev.predictions
+    test_path: test.predictions
+  reporting_methods:
+  - spearmanr
+  - uuas
+seed: 42
+metadata:
+  model_tag: gemma-3-1b
+multilingual_experiments:
+  model_tag: gemma-3-1b
+  results_root: experiments
+  configs_root: configs/gemma/3-1b/structural/langs
+  types:
+  - in_lang
+  - single_train
+  - holdout
+  - all_lang
+  write_configs: true

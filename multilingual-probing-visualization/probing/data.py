@@ -41,6 +41,36 @@ class SimpleDataset:
     self.dev_dataset = ObservationIterator(self.dev_obs, task)
     self.test_dataset = ObservationIterator(self.test_obs, task)
 
+  def _model_tag(self):
+    metadata = self.args.get('metadata', {})
+    if metadata.get('model_tag'):
+      return str(metadata['model_tag'])
+    decoder_cfg = self.args.get('decoder_model', {})
+    model_name = decoder_cfg.get('model_name') or self.args.get('model', {}).get('model_name')
+    if not model_name:
+      return None
+    return str(model_name).replace('/', '-')
+
+  def _format_path(self, path_value):
+    if path_value is None:
+      return None
+    path_value = str(path_value)
+    replacements = {
+        '{layer}': str(self.args.get('model', {}).get('model_layer')),
+        '{activation}': self.args.get('decoder_model', {}).get('activation_name'),
+        '{model}': self._model_tag(),
+    }
+    for token, value in replacements.items():
+      if value is not None:
+        path_value = path_value.replace(token, str(value))
+    return path_value
+
+  @staticmethod
+  def _join_root(root, path):
+    if root and path:
+      return os.path.join(root, path)
+    return root or path
+
   def read_from_disk(self):
     '''Reads observations from conllx-formatted files
 
@@ -71,9 +101,13 @@ class SimpleDataset:
 
     embeddings_config = self.args['dataset'].get('embeddings')
     if embeddings_config:
-      train_embeddings_path = os.path.join(embeddings_config['root'], embeddings_config.get('train_path', ''))
-      dev_embeddings_path = os.path.join(embeddings_config['root'], embeddings_config.get('dev_path', ''))
-      test_embeddings_path = os.path.join(embeddings_config['root'], embeddings_config.get('test_path', ''))
+      embeddings_root = self._format_path(embeddings_config.get('root'))
+      train_path = self._format_path(embeddings_config.get('train_path', ''))
+      dev_path = self._format_path(embeddings_config.get('dev_path', ''))
+      test_path = self._format_path(embeddings_config.get('test_path', ''))
+      train_embeddings_path = self._join_root(embeddings_root, train_path)
+      dev_embeddings_path = self._join_root(embeddings_root, dev_path)
+      test_embeddings_path = self._join_root(embeddings_root, test_path)
     else:
       train_embeddings_path = None
       dev_embeddings_path = None
@@ -562,9 +596,61 @@ class TransformerLensDataset(SimpleDataset):
       tqdm.write(f'[TLens] Using hidden size: {self._extractor.hidden_size}')
       self.args['model']['hidden_dim'] = self._extractor.hidden_size
 
-  def optionally_add_embeddings(self, observations, pretrained_embeddings_path=None, **kwargs):
+  def _load_embeddings_file(self, filepath):
+    if filepath is None:
+      raise ValueError("Embeddings filepath is required but was None.")
+    if not os.path.exists(filepath):
+      raise FileNotFoundError(f"Cached embeddings not found: {filepath}")
+    embeddings = torch.load(filepath, map_location='cpu')
+    if isinstance(embeddings, dict) and 'embeddings' in embeddings:
+      embeddings = embeddings['embeddings']
+    if not isinstance(embeddings, (list, tuple)):
+      raise ValueError(f"Expected cached embeddings to be a list; got {type(embeddings)}")
+    return list(embeddings)
+
+  def _format_lang_path(self, path_template, lang):
+    if path_template is None:
+      raise ValueError("Path template is required to resolve per-language embeddings.")
+    return str(path_template).replace('{lang}', lang)
+
+  def _load_cached_embeddings(self, observations, pretrained_embeddings_path, keys=None):
+    embeddings_cfg = self.args['dataset'].get('embeddings', {})
+    by_key = embeddings_cfg.get('by_key')
+    if by_key is None:
+      by_key = '{lang}' in str(pretrained_embeddings_path)
+    by_key = bool(by_key)
+    if by_key:
+      if not keys:
+        raise ValueError("Embeddings config requires `keys` to load per-language caches.")
+      embeddings = []
+      for key in keys:
+        lang_path = self._format_lang_path(pretrained_embeddings_path, key)
+        embeddings.extend(self._load_embeddings_file(lang_path))
+    else:
+      embeddings = self._load_embeddings_file(pretrained_embeddings_path)
+    if embeddings:
+      sample = embeddings[0]
+      hidden_dim = None
+      if isinstance(sample, torch.Tensor):
+        if sample.ndim >= 1:
+          hidden_dim = sample.shape[-1]
+      elif hasattr(sample, 'shape') and len(sample.shape) >= 1:
+        hidden_dim = sample.shape[-1]
+      if hidden_dim:
+        self.args.setdefault('model', {})['hidden_dim'] = int(hidden_dim)
+    if len(embeddings) != len(observations):
+      raise ValueError(
+          f"Cached embeddings size mismatch: got {len(embeddings)} embeddings for "
+          f"{len(observations)} observations.")
+    return self.add_embeddings_to_observations(observations, embeddings)
+
+  def optionally_add_embeddings(self, observations, pretrained_embeddings_path=None, keys=None, **kwargs):
     if not observations:
       return observations
+    embeddings_cfg = self.args['dataset'].get('embeddings')
+    if embeddings_cfg:
+      tqdm.write("[TLens] Loading cached embeddings from disk...")
+      return self._load_cached_embeddings(observations, pretrained_embeddings_path, keys=keys)
     self._ensure_extractor()
     tqdm.write(f"[TLens] Encoding {len(observations)} sentences via TransformerLens...")
     embeddings = self._extractor.encode_observations(observations)
@@ -597,3 +683,23 @@ class ObservationIterator(Dataset):
 
   def __getitem__(self, idx):
     return self.observations[idx], self.labels[idx]
+
+
+def load_observations(args, split_name, keys=None, skip_lines=False):
+  """Loads observations for a split without constructing labels."""
+  dataset = SimpleDataset.__new__(SimpleDataset)
+  dataset.args = args
+  dataset.batch_size = args['dataset']['batch_size']
+  dataset.use_disk_embeddings = args['model'].get('use_disk', False)
+  dataset.vocab = {}
+  lines_to_skip = args['dataset']['corpus'].get('lines_to_skip', [])
+  dataset.lines_to_skip = [range(x[0], x[1] + 1) for x in lines_to_skip]
+  dataset.lines_to_skip = [i for sublist in dataset.lines_to_skip for i in sublist]
+  dataset.observation_class = dataset.get_observation_class(args['dataset']['observation_fieldnames'])
+
+  if keys is None and 'keys' in args['dataset']:
+    keys = args['dataset']['keys'].get(split_name)
+
+  root_path = args['dataset']['corpus']['root']
+  split_path = args['dataset']['corpus'][f'{split_name}_path']
+  return dataset.load_keyed_conll_dataset(root_path, split_path, skip_lines=skip_lines, keys=keys)

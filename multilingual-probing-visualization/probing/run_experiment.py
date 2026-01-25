@@ -283,9 +283,15 @@ if __name__ == '__main__':
   argp.add_argument('--report-results', default=1, type=int,
       help='Set to report results; '
       '(optionally after training a new probe)')
-  argp.add_argument('--seed', default=42, type=int,
+  argp.add_argument('--seed', default=None, type=int,
       help='sets all random seeds for (within-machine) reproducibility')
   cli_args = argp.parse_args()
+  with open(cli_args.experiment_config, 'r') as config_file:
+    yaml_args = yaml.safe_load(config_file)
+  if cli_args.seed is None:
+    cli_args.seed = yaml_args.get('seed', 42)
+  yaml_args['seed'] = cli_args.seed
+  print(f"Seed: {cli_args.seed}")
   if cli_args.seed is not None:
     random.seed(cli_args.seed)
     np.random.seed(cli_args.seed)
@@ -293,9 +299,6 @@ if __name__ == '__main__':
     torch.cuda.manual_seed_all(cli_args.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
-  with open(cli_args.experiment_config, 'r') as config_file:
-    yaml_args = yaml.safe_load(config_file)
   setup_new_experiment_dir(cli_args, yaml_args, cli_args.results_dir)
   device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
   yaml_args['device'] = device

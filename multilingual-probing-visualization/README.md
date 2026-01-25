@@ -240,6 +240,41 @@ Gemma).
 
 
 
+## Multilingual experiment automation
+Helper scripts are included to run multilingual experiments and cache model
+activations (so the model does not re-run for every experiment).
+
+### Cache activations
+```
+python3 probing/cache_activations.py \
+  --config configs/gemma/3-1b/structural/base.yaml \
+  --start-layer 0 --end-layer 25
+```
+This writes per-language caches to:
+`activations/{model}/{activation}/layer-{layer}/{lang}/{split}.pt`.
+
+### Run experiments (single layer)
+```
+python3 probing/run_multilingual_experiments.py \
+  --config configs/gemma/3-1b/structural/base.yaml
+```
+
+### Run all layers
+```
+bash run_layers.sh configs/gemma/3-1b/structural/base.yaml 0 25 multilang
+```
+
+### Plot results
+```
+python3 scripts/plot_probing_results.py --metric_file test.uuas
+```
+
+### Output layout
+```
+experiments/<model>/<eval_lang>/<experiment>/<train_spec>/layer-<layer>/
+configs/<model>/<variant>/langs/<eval_lang>/<experiment>/<train_spec>/layer-<layer>.yaml
+```
+
 ## Experiments on new datasets or models
 Generally speaking, the following steps are necessary to run arbitrary experiments:
 
