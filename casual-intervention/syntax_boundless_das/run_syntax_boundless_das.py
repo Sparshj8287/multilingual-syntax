@@ -207,15 +207,16 @@ def collate_batch(
 ) -> Dict[str, torch.Tensor | List[int]]:
     good_ids = [encode_sentence(tokenizer, ex["sentence_good"]) for ex in examples]
     bad_ids = [encode_sentence(tokenizer, ex["sentence_bad"]) for ex in examples]
+    max_len = max(
+        max(len(ids) for ids in good_ids),
+        max(len(ids) for ids in bad_ids),
+    )
 
     good_input_ids, good_attention_mask, good_lens = build_padded_batch(
-        good_ids, pad_id, max_len=max(
-            max(len(ids) for ids in good_ids),
-            max(len(ids) for ids in bad_ids),
-        )
+        good_ids, pad_id, max_len=max_len
     )
     bad_input_ids, bad_attention_mask, bad_lens = build_padded_batch(
-        bad_ids, pad_id, max_len=good_input_ids.shape[1]
+        bad_ids, pad_id, max_len=max_len
     )
 
     return {
@@ -418,7 +419,6 @@ def train_layer(
             if gradient_accumulation_steps > 1:
                 loss = loss / gradient_accumulation_steps
             loss.backward()
-
             if total_step % gradient_accumulation_steps == 0:
                 if not (gradient_accumulation_steps > 1 and total_step == 0):
                     optimizer.step()
@@ -614,7 +614,9 @@ def main() -> None:
             )
             print(
                 f"[eval] layer {layer} val_acc={val_metrics['accuracy']:.4f} "
-                f"test_acc={test_metrics['accuracy']:.4f}"
+                f"test_acc={test_metrics['accuracy']:.4f} "
+                f"val_loss={val_metrics['avg_loss']:.4f} "
+                f"test_loss={test_metrics['avg_loss']:.4f}"
             )
 
             layer_results.append(

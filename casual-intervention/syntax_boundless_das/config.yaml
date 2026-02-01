@@ -33,14 +33,14 @@ runtime:
 intervention:
   component: block_output
   unit: pos
-  layers: [0,15,20,25,30,35,40,45]
+  layers: [0,10,15,20,25,30,35,40,45]
   token_positions: [end]
   token_index: 1
 
 training:
   seed: 42
-  batch_size: 36
-  eval_batch_size: 36
+  batch_size: 64
+  eval_batch_size: 64
   epochs: 3
   gradient_accumulation_steps: 4
   lr_rotate: 1.0e-3
