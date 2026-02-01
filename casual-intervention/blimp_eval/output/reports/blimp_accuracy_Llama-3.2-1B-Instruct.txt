@@ -1,0 +1,137 @@
+BLiMP pair-level accuracy report
+
+Overall:
+  total_pairs: 18000
+  correct_pairs: 12023
+  wrong_pairs: 5977
+  total_predicted_A: 7479
+  total_predicted_B: 10521
+  accuracy: 0.6679
+
+Per component:
+- adjunct_island
+  total_pairs: 1000
+  correct_pairs: 599
+  wrong_pairs: 401
+  predicted_A: 553
+  predicted_B: 447
+  accuracy: 0.5990
+- anaphor_gender_agreement
+  total_pairs: 1000
+  correct_pairs: 660
+  wrong_pairs: 340
+  predicted_A: 182
+  predicted_B: 818
+  accuracy: 0.6600
+- anaphor_number_agreement
+  total_pairs: 1000
+  correct_pairs: 613
+  wrong_pairs: 387
+  predicted_A: 139
+  predicted_B: 861
+  accuracy: 0.6130
+- animate_subject_passive
+  total_pairs: 1000
+  correct_pairs: 672
+  wrong_pairs: 328
+  predicted_A: 674
+  predicted_B: 326
+  accuracy: 0.6720
+- animate_subject_trans
+  total_pairs: 1000
+  correct_pairs: 587
+  wrong_pairs: 413
+  predicted_A: 641
+  predicted_B: 359
+  accuracy: 0.5870
+- causative
+  total_pairs: 1000
+  correct_pairs: 576
+  wrong_pairs: 424
+  predicted_A: 452
+  predicted_B: 548
+  accuracy: 0.5760
+- complex_NP_island
+  total_pairs: 1000
+  correct_pairs: 541
+  wrong_pairs: 459
+  predicted_A: 885
+  predicted_B: 115
+  accuracy: 0.5410
+- coordinate_structure_constraint_complex_left_branch
+  total_pairs: 1000
+  correct_pairs: 701
+  wrong_pairs: 299
+  predicted_A: 417
+  predicted_B: 583
+  accuracy: 0.7010
+- coordinate_structure_constraint_object_extraction
+  total_pairs: 1000
+  correct_pairs: 607
+  wrong_pairs: 393
+  predicted_A: 743
+  predicted_B: 257
+  accuracy: 0.6070
+- determiner_noun_agreement_1
+  total_pairs: 1000
+  correct_pairs: 803
+  wrong_pairs: 197
+  predicted_A: 369
+  predicted_B: 631
+  accuracy: 0.8030
+- determiner_noun_agreement_2
+  total_pairs: 1000
+  correct_pairs: 740
+  wrong_pairs: 260
+  predicted_A: 408
+  predicted_B: 592
+  accuracy: 0.7400
+- determiner_noun_agreement_irregular_1
+  total_pairs: 1000
+  correct_pairs: 769
+  wrong_pairs: 231
+  predicted_A: 381
+  predicted_B: 619
+  accuracy: 0.7690
+- determiner_noun_agreement_irregular_2
+  total_pairs: 1000
+  correct_pairs: 775
+  wrong_pairs: 225
+  predicted_A: 421
+  predicted_B: 579
+  accuracy: 0.7750
+- determiner_noun_agreement_with_adj_2
+  total_pairs: 1000
+  correct_pairs: 642
+  wrong_pairs: 358
+  predicted_A: 222
+  predicted_B: 778
+  accuracy: 0.6420
+- determiner_noun_agreement_with_adj_irregular_1
+  total_pairs: 1000
+  correct_pairs: 758
+  wrong_pairs: 242
+  predicted_A: 332
+  predicted_B: 668
+  accuracy: 0.7580
+- determiner_noun_agreement_with_adj_irregular_2
+  total_pairs: 1000
+  correct_pairs: 661
+  wrong_pairs: 339
+  predicted_A: 255
+  predicted_B: 745
+  accuracy: 0.6610
+- determiner_noun_agreement_with_adjective_1
+  total_pairs: 1000
+  correct_pairs: 730
+  wrong_pairs: 270
+  predicted_A: 276
+  predicted_B: 724
+  accuracy: 0.7300
+- distractor_agreement_relational_noun
+  total_pairs: 1000
+  correct_pairs: 589
+  wrong_pairs: 411
+  predicted_A: 129
+  predicted_B: 871
+  accuracy: 0.5890

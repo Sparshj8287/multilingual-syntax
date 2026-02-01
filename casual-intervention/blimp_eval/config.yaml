@@ -1,0 +1,24 @@
+dataset_name: nyu-mll/blimp
+output_dir: output
+prompt_template: "Given sentences A and B, choose the one which is grammatically acceptable. Give your answer as \"A\" or \"B\" only.\nSentence A: {sentence_a}\nSentence B: {sentence_b}\nAnswer:"
+batch_size: 500
+max_examples: null
+configs: null
+# Swap sentence positions to measure position bias.
+swap_fraction: 0.5
+swap_seed: 42
+# Generation output (first config only)
+generation_output: true
+generation_num_sentences: 20
+generation_max_tokens: 10
+# Use "auto" for all GPUs, or "gpu0", "gpu1", "gpu2" for specific ones:
+device_map: gpu1
+torch_dtype: null
+models:
+  - name: Llama-3.2-1B
+    path: /home/models/llama-3.2-1b
+  # - name: qwen-3-1.7b
+  #   path: Qwen/Qwen3-1.7B
+  # Example local path:
+  # - name: local-gemma-3-1b
+  #   path: /absolute/path/to/gemma-3-1b

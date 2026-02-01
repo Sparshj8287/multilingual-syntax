@@ -142,4 +142,50 @@ if enable_blip:
     type_to_dimension_mapping[BlipITMWrapper] = (
         blip_itm_wrapper_type_to_dimension_mapping
     )
+
+# Gemma3 support (align text backbone to Gemma2-style mappings)
+try:
+    from transformers.models import gemma3 as hf_gemma3
+
+    _gemma3_model = getattr(hf_gemma3.modeling_gemma3, "Gemma3Model", None)
+    _gemma3_causal = getattr(hf_gemma3.modeling_gemma3, "Gemma3ForCausalLM", None)
+    _gemma3_conditional = getattr(
+        hf_gemma3.modeling_gemma3, "Gemma3ForConditionalGeneration", None
+    )
+    _gemma3_seq = getattr(
+        hf_gemma3.modeling_gemma3, "Gemma3ForSequenceClassification", None
+    )
+
+    _gemma3_text_dimension_mapping = {}
+    for key, values in gemma2_type_to_dimension_mapping.items():
+        mapped_values = []
+        for proposal in values:
+            if isinstance(proposal, str) and not proposal.isnumeric():
+                mapped_values.append(f"text_config.{proposal}")
+            else:
+                mapped_values.append(proposal)
+        _gemma3_text_dimension_mapping[key] = tuple(mapped_values)
+
+    _gemma3_model_module_mapping = {}
+    for k, v in gemma2_type_to_module_mapping.items():
+        _gemma3_model_module_mapping[k] = (f"language_model.{v[0]}",) + v[1:]
+
+    _gemma3_conditional_module_mapping = {}
+    for k, v in gemma2_type_to_module_mapping.items():
+        _gemma3_conditional_module_mapping[k] = (f"model.language_model.{v[0]}",) + v[1:]
+
+    if _gemma3_model is not None:
+        type_to_module_mapping[_gemma3_model] = _gemma3_model_module_mapping
+        type_to_dimension_mapping[_gemma3_model] = _gemma3_text_dimension_mapping
+    if _gemma3_causal is not None:
+        type_to_module_mapping[_gemma3_causal] = gemma2_lm_type_to_module_mapping
+        type_to_dimension_mapping[_gemma3_causal] = gemma2_lm_type_to_dimension_mapping
+    if _gemma3_conditional is not None:
+        type_to_module_mapping[_gemma3_conditional] = _gemma3_conditional_module_mapping
+        type_to_dimension_mapping[_gemma3_conditional] = _gemma3_text_dimension_mapping
+    if _gemma3_seq is not None:
+        type_to_module_mapping[_gemma3_seq] = gemma2_classifier_type_to_module_mapping
+        type_to_dimension_mapping[_gemma3_seq] = gemma2_classifier_type_to_dimension_mapping
+except Exception:
+    pass
 #########################################################################

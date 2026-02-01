@@ -1,0 +1,412 @@
+BLiMP sentence likelihood report
+
+Overall:
+  total_pairs: 67000
+  correct_pairs: 54777
+  wrong_pairs: 12223
+  accuracy: 0.8176
+  avg_logprob_diff: 3.4936
+
+Per component:
+- adjunct_island
+  total_pairs: 1000
+  correct_pairs: 899
+  wrong_pairs: 101
+  accuracy: 0.8990
+  avg_logprob_diff: 4.1597
+- anaphor_gender_agreement
+  total_pairs: 1000
+  correct_pairs: 990
+  wrong_pairs: 10
+  accuracy: 0.9900
+  avg_logprob_diff: 3.8208
+- anaphor_number_agreement
+  total_pairs: 1000
+  correct_pairs: 998
+  wrong_pairs: 2
+  accuracy: 0.9980
+  avg_logprob_diff: 4.4629
+- animate_subject_passive
+  total_pairs: 1000
+  correct_pairs: 754
+  wrong_pairs: 246
+  accuracy: 0.7540
+  avg_logprob_diff: 2.8891
+- animate_subject_trans
+  total_pairs: 1000
+  correct_pairs: 874
+  wrong_pairs: 126
+  accuracy: 0.8740
+  avg_logprob_diff: 6.0464
+- causative
+  total_pairs: 1000
+  correct_pairs: 782
+  wrong_pairs: 218
+  accuracy: 0.7820
+  avg_logprob_diff: 2.9951
+- complex_NP_island
+  total_pairs: 1000
+  correct_pairs: 594
+  wrong_pairs: 406
+  accuracy: 0.5940
+  avg_logprob_diff: 1.1849
+- coordinate_structure_constraint_complex_left_branch
+  total_pairs: 1000
+  correct_pairs: 644
+  wrong_pairs: 356
+  accuracy: 0.6440
+  avg_logprob_diff: 2.3770
+- coordinate_structure_constraint_object_extraction
+  total_pairs: 1000
+  correct_pairs: 864
+  wrong_pairs: 136
+  accuracy: 0.8640
+  avg_logprob_diff: 5.8807
+- determiner_noun_agreement_1
+  total_pairs: 1000
+  correct_pairs: 992
+  wrong_pairs: 8
+  accuracy: 0.9920
+  avg_logprob_diff: 4.7945
+- determiner_noun_agreement_2
+  total_pairs: 1000
+  correct_pairs: 968
+  wrong_pairs: 32
+  accuracy: 0.9680
+  avg_logprob_diff: 4.6040
+- determiner_noun_agreement_irregular_1
+  total_pairs: 1000
+  correct_pairs: 955
+  wrong_pairs: 45
+  accuracy: 0.9550
+  avg_logprob_diff: 3.5076
+- determiner_noun_agreement_irregular_2
+  total_pairs: 1000
+  correct_pairs: 945
+  wrong_pairs: 55
+  accuracy: 0.9450
+  avg_logprob_diff: 4.0961
+- determiner_noun_agreement_with_adj_2
+  total_pairs: 1000
+  correct_pairs: 914
+  wrong_pairs: 86
+  accuracy: 0.9140
+  avg_logprob_diff: 3.7838
+- determiner_noun_agreement_with_adj_irregular_1
+  total_pairs: 1000
+  correct_pairs: 878
+  wrong_pairs: 122
+  accuracy: 0.8780
+  avg_logprob_diff: 3.2635
+- determiner_noun_agreement_with_adj_irregular_2
+  total_pairs: 1000
+  correct_pairs: 900
+  wrong_pairs: 100
+  accuracy: 0.9000
+  avg_logprob_diff: 3.4952
+- determiner_noun_agreement_with_adjective_1
+  total_pairs: 1000
+  correct_pairs: 967
+  wrong_pairs: 33
+  accuracy: 0.9670
+  avg_logprob_diff: 3.9196
+- distractor_agreement_relational_noun
+  total_pairs: 1000
+  correct_pairs: 801
+  wrong_pairs: 199
+  accuracy: 0.8010
+  avg_logprob_diff: 1.6312
+- distractor_agreement_relative_clause
+  total_pairs: 1000
+  correct_pairs: 608
+  wrong_pairs: 392
+  accuracy: 0.6080
+  avg_logprob_diff: 0.5604
+- drop_argument
+  total_pairs: 1000
+  correct_pairs: 840
+  wrong_pairs: 160
+  accuracy: 0.8400
+  avg_logprob_diff: 3.6675
+- ellipsis_n_bar_1
+  total_pairs: 1000
+  correct_pairs: 834
+  wrong_pairs: 166
+  accuracy: 0.8340
+  avg_logprob_diff: 3.3540
+- ellipsis_n_bar_2
+  total_pairs: 1000
+  correct_pairs: 905
+  wrong_pairs: 95
+  accuracy: 0.9050
+  avg_logprob_diff: 6.6623
+- existential_there_object_raising
+  total_pairs: 1000
+  correct_pairs: 853
+  wrong_pairs: 147
+  accuracy: 0.8530
+  avg_logprob_diff: 4.7443
+- existential_there_quantifiers_1
+  total_pairs: 1000
+  correct_pairs: 986
+  wrong_pairs: 14
+  accuracy: 0.9860
+  avg_logprob_diff: 8.7837
+- existential_there_quantifiers_2
+  total_pairs: 1000
+  correct_pairs: 330
+  wrong_pairs: 670
+  accuracy: 0.3300
+  avg_logprob_diff: -1.5135
+- existential_there_subject_raising
+  total_pairs: 1000
+  correct_pairs: 893
+  wrong_pairs: 107
+  accuracy: 0.8930
+  avg_logprob_diff: 6.2603
+- expletive_it_object_raising
+  total_pairs: 1000
+  correct_pairs: 802
+  wrong_pairs: 198
+  accuracy: 0.8020
+  avg_logprob_diff: 6.1012
+- inchoative
+  total_pairs: 1000
+  correct_pairs: 721
+  wrong_pairs: 279
+  accuracy: 0.7210
+  avg_logprob_diff: 2.3276
+- intransitive
+  total_pairs: 1000
+  correct_pairs: 858
+  wrong_pairs: 142
+  accuracy: 0.8580
+  avg_logprob_diff: 3.9205
+- irregular_past_participle_adjectives
+  total_pairs: 1000
+  correct_pairs: 964
+  wrong_pairs: 36
+  accuracy: 0.9640
+  avg_logprob_diff: 4.6676
+- irregular_past_participle_verbs
+  total_pairs: 1000
+  correct_pairs: 889
+  wrong_pairs: 111
+  accuracy: 0.8890
+  avg_logprob_diff: 3.9987
+- irregular_plural_subject_verb_agreement_1
+  total_pairs: 1000
+  correct_pairs: 928
+  wrong_pairs: 72
+  accuracy: 0.9280
+  avg_logprob_diff: 3.5483
+- irregular_plural_subject_verb_agreement_2
+  total_pairs: 1000
+  correct_pairs: 912
+  wrong_pairs: 88
+  accuracy: 0.9120
+  avg_logprob_diff: 3.6017
+- left_branch_island_echo_question
+  total_pairs: 1000
+  correct_pairs: 561
+  wrong_pairs: 439
+  accuracy: 0.5610
+  avg_logprob_diff: 0.6812
+- left_branch_island_simple_question
+  total_pairs: 1000
+  correct_pairs: 745
+  wrong_pairs: 255
+  accuracy: 0.7450
+  avg_logprob_diff: 3.4408
+- matrix_question_npi_licensor_present
+  total_pairs: 1000
+  correct_pairs: 548
+  wrong_pairs: 452
+  accuracy: 0.5480
+  avg_logprob_diff: 0.5430
+- npi_present_1
+  total_pairs: 1000
+  correct_pairs: 618
+  wrong_pairs: 382
+  accuracy: 0.6180
+  avg_logprob_diff: 0.8492
+- npi_present_2
+  total_pairs: 1000
+  correct_pairs: 688
+  wrong_pairs: 312
+  accuracy: 0.6880
+  avg_logprob_diff: 1.3924
+- only_npi_licensor_present
+  total_pairs: 1000
+  correct_pairs: 929
+  wrong_pairs: 71
+  accuracy: 0.9290
+  avg_logprob_diff: 3.6459
+- only_npi_scope
+  total_pairs: 1000
+  correct_pairs: 794
+  wrong_pairs: 206
+  accuracy: 0.7940
+  avg_logprob_diff: 2.7297
+- passive_1
+  total_pairs: 1000
+  correct_pairs: 895
+  wrong_pairs: 105
+  accuracy: 0.8950
+  avg_logprob_diff: 4.9788
+- passive_2
+  total_pairs: 1000
+  correct_pairs: 919
+  wrong_pairs: 81
+  accuracy: 0.9190
+  avg_logprob_diff: 4.8468
+- principle_A_c_command
+  total_pairs: 1000
+  correct_pairs: 698
+  wrong_pairs: 302
+  accuracy: 0.6980
+  avg_logprob_diff: 1.0817
+- principle_A_case_1
+  total_pairs: 1000
+  correct_pairs: 1000
+  wrong_pairs: 0
+  accuracy: 1.0000
+  avg_logprob_diff: 9.6240
+- principle_A_case_2
+  total_pairs: 1000
+  correct_pairs: 942
+  wrong_pairs: 58
+  accuracy: 0.9420
+  avg_logprob_diff: 4.1861
+- principle_A_domain_1
+  total_pairs: 1000
+  correct_pairs: 988
+  wrong_pairs: 12
+  accuracy: 0.9880
+  avg_logprob_diff: 4.9667
+- principle_A_domain_2
+  total_pairs: 1000
+  correct_pairs: 760
+  wrong_pairs: 240
+  accuracy: 0.7600
+  avg_logprob_diff: 0.9915
+- principle_A_domain_3
+  total_pairs: 1000
+  correct_pairs: 692
+  wrong_pairs: 308
+  accuracy: 0.6920
+  avg_logprob_diff: 1.1141
+- principle_A_reconstruction
+  total_pairs: 1000
+  correct_pairs: 469
+  wrong_pairs: 531
+  accuracy: 0.4690
+  avg_logprob_diff: 0.0121
+- regular_plural_subject_verb_agreement_1
+  total_pairs: 1000
+  correct_pairs: 960
+  wrong_pairs: 40
+  accuracy: 0.9600
+  avg_logprob_diff: 4.1768
+- regular_plural_subject_verb_agreement_2
+  total_pairs: 1000
+  correct_pairs: 907
+  wrong_pairs: 93
+  accuracy: 0.9070
+  avg_logprob_diff: 3.7943
+- sentential_negation_npi_licensor_present
+  total_pairs: 1000
+  correct_pairs: 984
+  wrong_pairs: 16
+  accuracy: 0.9840
+  avg_logprob_diff: 7.6763
+- sentential_negation_npi_scope
+  total_pairs: 1000
+  correct_pairs: 795
+  wrong_pairs: 205
+  accuracy: 0.7950
+  avg_logprob_diff: 2.4580
+- sentential_subject_island
+  total_pairs: 1000
+  correct_pairs: 351
+  wrong_pairs: 649
+  accuracy: 0.3510
+  avg_logprob_diff: -0.9378
+- superlative_quantifiers_1
+  total_pairs: 1000
+  correct_pairs: 895
+  wrong_pairs: 105
+  accuracy: 0.8950
+  avg_logprob_diff: 2.9637
+- superlative_quantifiers_2
+  total_pairs: 1000
+  correct_pairs: 878
+  wrong_pairs: 122
+  accuracy: 0.8780
+  avg_logprob_diff: 3.9928
+- tough_vs_raising_1
+  total_pairs: 1000
+  correct_pairs: 768
+  wrong_pairs: 232
+  accuracy: 0.7680
+  avg_logprob_diff: 3.7500
+- tough_vs_raising_2
+  total_pairs: 1000
+  correct_pairs: 844
+  wrong_pairs: 156
+  accuracy: 0.8440
+  avg_logprob_diff: 4.2113
+- transitive
+  total_pairs: 1000
+  correct_pairs: 884
+  wrong_pairs: 116
+  accuracy: 0.8840
+  avg_logprob_diff: 4.9491
+- wh_island
+  total_pairs: 1000
+  correct_pairs: 749
+  wrong_pairs: 251
+  accuracy: 0.7490
+  avg_logprob_diff: 2.3064
+- wh_questions_object_gap
+  total_pairs: 1000
+  correct_pairs: 822
+  wrong_pairs: 178
+  accuracy: 0.8220
+  avg_logprob_diff: 3.2777
+- wh_questions_subject_gap
+  total_pairs: 1000
+  correct_pairs: 929
+  wrong_pairs: 71
+  accuracy: 0.9290
+  avg_logprob_diff: 4.9280
+- wh_questions_subject_gap_long_distance
+  total_pairs: 1000
+  correct_pairs: 898
+  wrong_pairs: 102
+  accuracy: 0.8980
+  avg_logprob_diff: 4.4459
+- wh_vs_that_no_gap
+  total_pairs: 1000
+  correct_pairs: 967
+  wrong_pairs: 33
+  accuracy: 0.9670
+  avg_logprob_diff: 5.3677
+- wh_vs_that_no_gap_long_distance
+  total_pairs: 1000
+  correct_pairs: 953
+  wrong_pairs: 47
+  accuracy: 0.9530
+  avg_logprob_diff: 4.9494
+- wh_vs_that_with_gap
+  total_pairs: 1000
+  correct_pairs: 499
+  wrong_pairs: 501
+  accuracy: 0.4990
+  avg_logprob_diff: -0.0682
+- wh_vs_that_with_gap_long_distance
+  total_pairs: 1000
+  correct_pairs: 406
+  wrong_pairs: 594
+  accuracy: 0.4060
+  avg_logprob_diff: -0.8502

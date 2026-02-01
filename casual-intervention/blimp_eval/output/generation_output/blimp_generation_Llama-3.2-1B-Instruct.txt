@@ -1,0 +1,40 @@
+A,A,ĠA Ċ Explanation : ĠIn Ġsentence ĠA , Ġ" who
+A,B,ĠB Ċ Explanation : ĠIn ĠSentence ĠB , Ġthe Ġverb
+A,A,ĠA <|eot_id|>
+A,B,ĠB Ċ Explanation : ĠIn Ġsentence ĠB , Ġthe Ġverb
+A,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġthe Ġverb
+A,B,ĠB <|eot_id|>
+A,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġ" f
+A,B,ĠB <|eot_id|>
+A,A,ĠA Ċ Explanation : ĠIn Ġsentence ĠA , Ġ" who
+A,A,ĠA <|eot_id|>
+A,B,ĠB Ċ Explanation : ĠIn ĠSentence ĠB , Ġthe Ġsubject
+A,A,ĠA <|eot_id|>
+A,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġthe Ġverb
+A,A,ĠA Ċ Explanation : ĠIn Ġsentence ĠA , Ġ" who
+A,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġ" f
+A,B,ĠB Ċ Explanation : ĠIn ĠSentence ĠB , Ġthe Ġverb
+A,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġ" ag
+A,B,ĠB <|eot_id|>
+A,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġthe Ġsubject
+A,B,ĠA <|eot_id|>
+B,B,ĠA <|eot_id|>
+B,A,ĠA Ċ Explanation : ĠIn Ġsentence ĠA , Ġ" who
+B,B,ĠB <|eot_id|>
+B,A,ĠA <|eot_id|>
+B,B,ĠB <|eot_id|>
+B,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġ" dro
+B,B,ĠB <|eot_id|>
+B,A,ĠA <|eot_id|>
+B,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġ" plane
+B,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġthe Ġverb
+B,B,ĠB <|eot_id|>
+B,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġthe Ġverb
+B,A,ĠA <|eot_id|>
+B,A,ĠA <|eot_id|>
+B,B,ĠB <|eot_id|>
+B,B,ĠB <|eot_id|>
+B,A,ĠA Ċ Explanation : ĠIn ĠSentence ĠA , Ġthe Ġsubject
+B,A,ĠA Ċ Explanation : ĠIn Ġsentence ĠA , Ġthe Ġsubject
+B,B,ĠB <|eot_id|>
+B,B,ĠB <|eot_id|>

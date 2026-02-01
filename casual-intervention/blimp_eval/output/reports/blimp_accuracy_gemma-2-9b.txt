@@ -1,0 +1,25 @@
+BLiMP pair-level accuracy report
+
+Overall:
+  total_pairs: 1696
+  correct_pairs: 1449
+  wrong_pairs: 247
+  total_predicted_A: 718
+  total_predicted_B: 978
+  accuracy: 0.8544
+
+Per component:
+- adjunct_island
+  total_pairs: 1000
+  correct_pairs: 794
+  wrong_pairs: 206
+  predicted_A: 410
+  predicted_B: 590
+  accuracy: 0.7940
+- anaphor_gender_agreement
+  total_pairs: 696
+  correct_pairs: 655
+  wrong_pairs: 41
+  predicted_A: 308
+  predicted_B: 388
+  accuracy: 0.9411
