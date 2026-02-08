@@ -16,7 +16,7 @@ dataset:
     - irregular_plural_subject_verb_agreement_2
     - regular_plural_subject_verb_agreement_1
     - regular_plural_subject_verb_agreement_2
-  val_size: 1000
+  val_size: 2000
   test_size: 1000
   shuffle_seed: 42
 

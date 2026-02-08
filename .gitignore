@@ -3,6 +3,14 @@
 # ------------------------------------------------------------------
 datasets/
 activations/
+LM_syneval/
+eng/
+fra/
+hin/
+unimorph/
+urd/
+results/
+ara/
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo

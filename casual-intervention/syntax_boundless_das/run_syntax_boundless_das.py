@@ -627,6 +627,44 @@ def main() -> None:
                 }
             )
 
+            result_payload = {
+                "model": model_name,
+                "model_path": model_path,
+                "uids": uids,
+                "layers": layer_results,
+                "token_positions": token_positions,
+                "token_index": token_index,
+                "component": component,
+                "unit": unit,
+                "training": {
+                    "seed": int(training_cfg.get("seed", 42)),
+                    "epochs": int(training_cfg.get("epochs", 3)),
+                    "batch_size": int(training_cfg.get("batch_size", 16)),
+                    "eval_batch_size": int(training_cfg.get("eval_batch_size", 16)),
+                    "gradient_accumulation_steps": int(
+                        training_cfg.get("gradient_accumulation_steps", 4)
+                    ),
+                    "lr_rotate": float(training_cfg.get("lr_rotate", 1.0e-3)),
+                    "lr_boundary": float(training_cfg.get("lr_boundary", 1.0e-2)),
+                    "warmup_ratio": float(training_cfg.get("warmup_ratio", 0.1)),
+                    "temperature_start": float(training_cfg.get("temperature_start", 50.0)),
+                    "temperature_end": float(training_cfg.get("temperature_end", 0.1)),
+                    "boundary_loss_weight": float(
+                        training_cfg.get("boundary_loss_weight", 1.0)
+                    ),
+                },
+                "dataset": {
+                    "name": dataset_name,
+                    "val_size": val_size,
+                    "test_size": test_size,
+                    "train_size": len(train_data),
+                },
+            }
+
+            result_path = os.path.join(model_dir, "results.json")
+            with open(result_path, "w", encoding="utf-8") as f:
+                json.dump(result_payload, f, indent=2)
+
         result_payload = {
             "model": model_name,
             "model_path": model_path,
