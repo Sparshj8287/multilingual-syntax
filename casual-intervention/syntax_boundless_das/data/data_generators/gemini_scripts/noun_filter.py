@@ -26,7 +26,7 @@ Tag it: Assign the specific template tags (MS, ES, BS, IS) based on the logic be
 1. Classification Rules (The Logic)
 You must classify every valid noun into exactly one of these two categories:
 
-Category A: ANIMATE (Human / Profession)
+Category A (a): ANIMATE (Human / Profession)
 
 Definition: Humans, professions, family roles, or distinct groups of people capable of communication and complex thought.
 
@@ -34,7 +34,7 @@ Template Tags: ["MS", "ES", "BS"]
 
 Reasoning: Humans can be the Main Subject (MS), Embedded Subject (ES), and the "Thinker/Speaker" (Base Subject BS) for sentential complements (e.g., "The senator claimed that...").
 
-Category B: ANIMATE (Animal)
+Category A (b): ANIMATE (Animal)
 
 Definition: Living animals that are not humans.
 
