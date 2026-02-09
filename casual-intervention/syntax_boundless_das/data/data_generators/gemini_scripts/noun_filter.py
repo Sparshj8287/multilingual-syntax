@@ -76,6 +76,7 @@ JSON
 {"lemma": "mile", "plural": "miles", "category": "INANIMATE", "tags": ["IS"]}
 {"lemma": "manager", "plural": "managers", "category": "ANIMATE", "tags": ["MS", "ES", "BS"]}
 {"lemma": "mouse", "plural": "mice", "category": "ANIMATE", "tags": ["MS", "ES"]}
+{"lemma": "cat", "plural": "cats", "category": "ANIMATE", "tags": ["MS", "ES"]}
 Raw Word List to Process: [PASTE YOUR BATCH OF WORDS HERE]
 """
 
@@ -159,7 +160,7 @@ def extract_jsonl(text):
 def main():
     args = parse_args()
 
-    api_key = os.getenv("AIzaSyAeTEXENYDFTf5oeTUK0rZwN1G4NAVt3O0")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         print("Error: GEMINI_API_KEY environment variable is not set.")
         sys.exit(1)
