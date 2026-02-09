@@ -14,8 +14,8 @@ except OSError:
     sys.exit(1)
 
 # CONFIGURATION
-INPUT_DIR = "semantically_clustered"
-OUTPUT_DIR = "semantically_clustered_cleaned"
+INPUT_DIR = "raw_data"
+OUTPUT_DIR = "raw_data_cleaned"
 
 # Strict Rules: Only keep words that match these tags
 # PROPN = Proper Noun (Names), NOUN = Common Noun
@@ -54,6 +54,7 @@ def parse_lemma(line):
 def clean_file(input_path, output_path, file_type):
     clean_lines = []
     dropped_examples = []
+    seen_lines = set()
 
     with open(input_path, "r", encoding="utf-8") as infile:
         lines = [line.rstrip("\n") for line in infile if line.strip()]
@@ -73,6 +74,9 @@ def clean_file(input_path, output_path, file_type):
             is_valid = False
 
         if is_valid:
+            if original_line in seen_lines:
+                continue
+            seen_lines.add(original_line)
             clean_lines.append(original_line)
         else:
             if len(dropped_examples) < SAMPLE_DROPPED:
@@ -156,7 +160,8 @@ def load_form_map(file_path):
 
 
 def combine_verbs_for_prefix(verb_dir, prefix):
-    base_filename = f"{prefix}_V;PRS;3;SG.tsv"
+    prefix_str = f"{prefix}_" if prefix else ""
+    base_filename = f"{prefix_str}V;PRS;3;SG.tsv"
     base_path = os.path.join(verb_dir, base_filename)
     if not os.path.exists(base_path):
         print(f"Skip combining verbs: missing {base_path}")
@@ -164,9 +169,12 @@ def combine_verbs_for_prefix(verb_dir, prefix):
 
     form_maps = {}
     for tag, label in VERB_FORM_ORDER:
-        form_maps[label] = load_form_map(os.path.join(verb_dir, f"{prefix}_{tag}.tsv"))
+        form_maps[label] = load_form_map(
+            os.path.join(verb_dir, f"{prefix_str}{tag}.tsv")
+        )
 
     combined_lines = []
+    seen_lines = set()
     with open(base_path, "r", encoding="utf-8") as infile:
         for raw_line in infile:
             line = raw_line.strip()
@@ -196,9 +204,14 @@ def combine_verbs_for_prefix(verb_dir, prefix):
                 fields.append(form)
 
             fields.append("Verb")
-            combined_lines.append("\t".join(fields))
+            entry = "\t".join(fields)
+            if entry in seen_lines:
+                continue
+            seen_lines.add(entry)
+            combined_lines.append(entry)
 
-    output_path = os.path.join(verb_dir, f"{prefix}_verb.tsv")
+    output_name = f"{prefix}_verb.tsv" if prefix else "verb.tsv"
+    output_path = os.path.join(verb_dir, output_name)
     with open(output_path, "w", encoding="utf-8") as outfile:
         outfile.write("\n".join(combined_lines))
         if combined_lines:
@@ -215,10 +228,20 @@ def combine_verbs(output_base):
         return
 
     total = 0
-    for prefix in ("animate", "inanimate"):
+    prefixes = []
+    if os.path.exists(os.path.join(verb_dir, "animate_V;PRS;3;SG.tsv")):
+        prefixes.extend(["animate", "inanimate"])
+    elif os.path.exists(os.path.join(verb_dir, "V;PRS;3;SG.tsv")):
+        prefixes.append("")
+
+    if not prefixes:
+        print("Skip combining verbs: no base verb files found.")
+        return
+
+    for prefix in prefixes:
         total += combine_verbs_for_prefix(verb_dir, prefix)
 
-    keep_files = {"animate_verb.tsv", "inanimate_verb.tsv"}
+    keep_files = {"animate_verb.tsv", "inanimate_verb.tsv", "verb.tsv"}
     for filename in os.listdir(verb_dir):
         if filename in keep_files:
             continue

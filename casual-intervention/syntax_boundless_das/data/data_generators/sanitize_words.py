@@ -53,5 +53,5 @@ def sanitize_directory(input_dir):
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    target_dir = os.path.join(script_dir, "../eng/semantically_clustered")
+    target_dir = os.path.join(script_dir, "../eng/raw_data")
     sanitize_directory(target_dir)

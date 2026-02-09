@@ -13,8 +13,8 @@ MODEL_NAME = "BAAI/bge-m3"             # The "Gold Standard" model
 # This ensures "Happy" (Adj) matches Animate, and "Rust" (Verb) matches Inanimate.
 ANCHOR_CONFIG = {
     "noun": {
-        "animate": "A living being, person, animal, creature, or human.",
-        "inanimate": "A non-living object, physical artifact, abstract concept, place, or thing."
+        "animate": "A sentient living being, such as a person or animal.",
+        "inanimate": "A non-sentient object, plant, place, or thing."
     },
     "verb": {
         # Check SUBJECT requirement: "Who does this?"
