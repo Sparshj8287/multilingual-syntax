@@ -5,7 +5,7 @@ import sys
 import time
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 try:
     from tqdm import tqdm
@@ -119,6 +119,18 @@ def parse_args():
         default=0.0,
         help="Seconds to sleep between batches.",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=5,
+        help="Max retries per batch on server errors.",
+    )
+    parser.add_argument(
+        "--retry-backoff",
+        type=float,
+        default=5.0,
+        help="Base backoff seconds for retries.",
+    )
     return parser.parse_args()
 
 
@@ -193,13 +205,38 @@ def main():
             ]
 
             response_text = ""
-            for chunk in client.models.generate_content_stream(
-                model=args.model,
-                contents=contents,
-                config=config,
-            ):
-                if chunk.text:
-                    response_text += chunk.text
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    for chunk in client.models.generate_content_stream(
+                        model=args.model,
+                        contents=contents,
+                        config=config,
+                    ):
+                        if chunk.text:
+                            response_text += chunk.text
+                    break
+                except errors.ServerError as exc:
+                    if attempt > args.max_retries:
+                        raise
+                    wait_time = args.retry_backoff * (2 ** (attempt - 1))
+                    print(
+                        f"ServerError on batch (attempt {attempt}/{args.max_retries}). "
+                        f"Retrying in {wait_time:.1f}s: {exc}"
+                    )
+                    time.sleep(wait_time)
+                    response_text = ""
+                except errors.APIError as exc:
+                    if attempt > args.max_retries:
+                        raise
+                    wait_time = args.retry_backoff * (2 ** (attempt - 1))
+                    print(
+                        f"APIError on batch (attempt {attempt}/{args.max_retries}). "
+                        f"Retrying in {wait_time:.1f}s: {exc}"
+                    )
+                    time.sleep(wait_time)
+                    response_text = ""
 
             jsonl_lines = extract_jsonl(response_text)
             if not jsonl_lines:
