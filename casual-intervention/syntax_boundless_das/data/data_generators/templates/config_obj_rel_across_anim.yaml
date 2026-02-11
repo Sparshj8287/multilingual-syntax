@@ -34,3 +34,4 @@ paths:
 
 output:
   paradigm: obj_rel_across_anim
+  data_dir: data

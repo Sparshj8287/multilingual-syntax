@@ -173,28 +173,37 @@ def main():
     out_file = os.path.join(
         out_dir, f"obj_rel_across_anim_pairs_{num_attractors}.csv"
     )
+    data_dir = resolve_path(config_dir, out_cfg.get("data_dir", "data"))
+    jsonl_dir = os.path.join(data_dir, out_cfg["paradigm"])
+    os.makedirs(jsonl_dir, exist_ok=True)
+    jsonl_file = os.path.join(
+        jsonl_dir, f"obj_rel_across_anim_pairs_{num_attractors}.jsonl"
+    )
 
     fieldnames = [
         "pair_id",
-        # "num_attractors",
-        # "use_trick",
-        # "attractor_number_mode",
-        # "main_subject_lemma",
-        # "main_subject_plural",
-        # "main_verb_sg",
-        # "main_verb_pl",
-        # "c_words",
-        # "es_lemmas",
-        # "es_plurals",
-        # "ev_sg",
-        # "ev_pl",
+        "num_attractors",
+        "use_trick",
+        "attractor_number_mode",
+        "main_subject_lemma",
+        "main_subject_plural",
+        "main_verb_sg",
+        "main_verb_pl",
+        "c_words",
+        "es_lemmas",
+        "es_plurals",
+        "ev_sg",
+        "ev_pl",
         "sentence_singular",
         "sentence_plural",
     ]
 
     generated = 0
     pair_id = 1
-    with open(out_file, "w", encoding="utf-8", newline="") as csvfile:
+    with (
+        open(out_file, "w", encoding="utf-8", newline="") as csvfile,
+        open(jsonl_file, "w", encoding="utf-8") as jsonl_out,
+    ):
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -261,30 +270,41 @@ def main():
                     d_word, ms_plural, blocks_plural, mv["pl"]
                 )
 
-                writer.writerow(
-                    {
-                        "pair_id": pair_id,
-                        # "num_attractors": num_attractors,
-                        # "use_trick": use_trick,
-                        # "attractor_number_mode": attractor_number_mode,
-                        # "main_subject_lemma": ms_lemma,
-                        # "main_subject_plural": ms_plural,
-                        # "main_verb_sg": mv["sg"],
-                        # "main_verb_pl": mv["pl"],
-                        # "c_words": "|".join(c_samples),
-                        # "es_lemmas": "|".join([e["lemma"] for e in es_samples]),
-                        # "es_plurals": "|".join([e["plural"] for e in es_samples]),
-                        # "ev_sg": "|".join([e["sg"] for e in ev_samples]),
-                        # "ev_pl": "|".join([e["pl"] for e in ev_samples]),
-                        "sentence_singular": sentence_singular,
-                        "sentence_plural": sentence_plural,
-                    }
-                )
+                row = {
+                    "pair_id": pair_id,
+                    "num_attractors": num_attractors,
+                    "use_trick": use_trick,
+                    "attractor_number_mode": attractor_number_mode,
+                    "main_subject_lemma": ms_lemma,
+                    "main_subject_plural": ms_plural,
+                    "main_verb_sg": mv["sg"],
+                    "main_verb_pl": mv["pl"],
+                    "c_words": "|".join(c_samples),
+                    "es_lemmas": "|".join([e["lemma"] for e in es_samples]),
+                    "es_plurals": "|".join([e["plural"] for e in es_samples]),
+                    "ev_sg": "|".join([e["sg"] for e in ev_samples]),
+                    "ev_pl": "|".join([e["pl"] for e in ev_samples]),
+                    "sentence_singular": sentence_singular,
+                    "sentence_plural": sentence_plural,
+                }
+                writer.writerow(row)
+                jsonl_row = {
+                    # **row,
+                    "base_sentence": sentence_singular,
+                    "source_sentence": sentence_plural,
+                    "NUA": num_attractors,
+                    "MS_base": ms_lemma,
+                    "MV_base": mv["sg"],
+                    "MS_source": ms_plural,
+                    "MV_source": mv["pl"],
+                }
+                jsonl_out.write(json.dumps(jsonl_row, ensure_ascii=True) + "\n")
 
                 generated += 1
                 pair_id += 1
 
     print(f"Wrote {generated} pairs to {out_file}")
+    print(f"Wrote {generated} pairs to {jsonl_file}")
 
 
 if __name__ == "__main__":
