@@ -13,7 +13,8 @@ except ImportError:  # pragma: no cover - fallback when tqdm isn't installed
     tqdm = None
 
 
-PROMPT_TEMPLATE = """You are an expert Computational Linguist. Your task is to classify a raw list of verbs into strict syntactic categories (Slots) based on the **Recursive Grammar Templates** provided below.
+PROMPT_TEMPLATE = """
+You are an expert Computational Linguist. Your task is to classify a raw list of verbs into strict syntactic categories (Slots) based on the **Recursive Grammar Templates** provided below.
 
 **Context: The Template Architecture**
 We are building a dataset using the following Python template rules. A verb's "Tag" is determined by its position and function in these specific structures.
@@ -105,7 +106,7 @@ Process the raw verb list below. For each verb, extract the **Singular (3rd Pers
 * *Examples:* *hurt, injured, embarrassed, disguised, cut.*
 
 ---
-NOTE: Please don't include any other text in your response except for the JSONL.
+
 **Output Format:**
 Return valid **JSONL**.
 
@@ -124,8 +125,7 @@ Return valid **JSONL**.
 
 ```
 
-**Raw Verb List to Process:**
-[PASTE YOUR LIST HERE]
+Raw Verb List to Process:\n[PASTE YOUR LIST HERE]
 """
 
 
@@ -197,7 +197,7 @@ def chunk_list(items, batch_size):
 
 def build_prompt(batch_lines):
     batch_text = "\n".join(batch_lines)
-
+    print(batch_text)    
     return PROMPT_TEMPLATE.replace(
         "Raw Verb List to Process:\n[PASTE YOUR LIST HERE]",
         f"Raw Verb List to Process:\n{batch_text}",
@@ -205,8 +205,6 @@ def build_prompt(batch_lines):
 
 
 def extract_jsonl(text):
-    print(text)
-    print("\n\n\n\n\n--------------------------------\n\n\n\n\n")
     output_objects = []
     for line in text.splitlines():
         line = line.strip()
@@ -250,12 +248,15 @@ def main():
 
     with open(args.output, "w", encoding="utf-8") as outfile:
         for idx, batch in enumerate(iterator):
+            time.sleep(3)
 
             batch_filtered = []
             for line in batch:
                 parts = line.split("\t")
                 if len(parts) >= 2:
                     batch_filtered.append("\t".join(parts[:2]))
+
+            
 
 
             prompt = build_prompt(batch_filtered)
@@ -267,6 +268,7 @@ def main():
             ]
 
             response_text = ""
+            print(prompt)
             attempt = 0
             while True:
                 attempt += 1
@@ -300,6 +302,9 @@ def main():
                     time.sleep(wait_time)
                     response_text = ""
 
+            print(response_text)
+            print("\n\n--------------------------------\n\n")
+
             json_objects = extract_jsonl(response_text)
             if not json_objects:
                 print("Warning: No valid JSONL lines parsed for batch.")
@@ -308,13 +313,6 @@ def main():
                     sg = obj.get("sg")
                     pl = obj.get("pl")
                     tags = obj.get("tags")
-                    if not sg or not pl:
-                        continue
-                    if not isinstance(tags, list):
-                        continue
-                    tags = [tag for tag in tags if isinstance(tag, str) and tag]
-                    if not tags:
-                        continue
                     key = (sg, pl)
                     if key in seen_verbs:
                         continue
@@ -331,8 +329,6 @@ def main():
             if args.sleep > 0:
                 time.sleep(args.sleep)
 
-            if idx % 3 == 0:
-                breakpoint()
 
     print(f"Done. Output written to {args.output}")
 

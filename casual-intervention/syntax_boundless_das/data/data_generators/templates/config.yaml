@@ -1,0 +1,36 @@
+# Configuration for obj_rel_across_anim generation
+
+generation:
+  # Required
+  num_attractors: 6
+  num_pairs: 500
+
+  # If true, attractors are opposite in number to the main subject.
+  # If false, attractor number is random per pair.
+  use_trick: true
+
+  # Reproducibility
+  seed: 13
+
+  # Pick which lexicon C list to use: "anim" or "inanim".
+  c_mode: anim
+
+lexicon:
+  # Complementizers (animate/inanimate lists)
+  c_words_anim:
+    - who
+    - that
+    - whom
+  c_words_inanim:
+    - that
+
+  # Determiner list (D). Generator always uses "the".
+  d_words:
+    - the
+
+paths:
+  nouns: ../../eng/raw_data_cleaned/noun/gemini_nouns.jsonl
+  verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs.jsonl
+
+output:
+  paradigm: obj_rel_across_anim
