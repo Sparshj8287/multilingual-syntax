@@ -69,10 +69,51 @@ def build_sentence(d_word, ms_word, blocks, mv_word):
     return sentence
 
 
-def choose_attractor_number(use_trick, main_number):
-    if use_trick:
-        return "plural" if main_number == "singular" else "singular"
-    return random.choice(["singular", "plural"])
+def build_base_attractor_numbers(num_attractors, variation_type):
+    if variation_type == "linear":
+        return ["singular"] * (num_attractors - 1) + ["plural"]
+    if variation_type == "bow":
+        return ["plural"] * (num_attractors - 1) + ["singular"]
+    if variation_type == "maximal":
+        return ["plural"] * num_attractors
+    raise ValueError(
+        "variation_type must be one of: 'linear', 'bow', or 'maximal'."
+    )
+
+
+def invert_attractor_numbers(attractor_numbers):
+    inverted = []
+    for number in attractor_numbers:
+        if number == "singular":
+            inverted.append("plural")
+        elif number == "plural":
+            inverted.append("singular")
+        else:
+            raise ValueError(
+                f"Invalid attractor number '{number}'. Expected singular/plural."
+            )
+    return inverted
+
+
+def build_clause_blocks(es_samples, ev_samples, c_samples, d_word, attractor_numbers):
+    blocks = []
+    for idx, number in enumerate(attractor_numbers):
+        es = es_samples[idx]
+        ev = ev_samples[idx]
+        c = c_samples[idx]
+
+        if number == "singular":
+            es_word = es["lemma"]
+            ev_word = ev["sg"]
+        elif number == "plural":
+            es_word = es["plural"]
+            ev_word = ev["pl"]
+        else:
+            raise ValueError(
+                f"Invalid attractor number '{number}'. Expected singular/plural."
+            )
+        blocks.append(f"{c} {d_word} {es_word} {ev_word}")
+    return blocks
 
 
 def validate_config(config):
@@ -91,6 +132,11 @@ def validate_config(config):
         )
     if "d_words" not in lex:
         raise ValueError("Config must include lexicon.d_words.")
+    variation_type = (gen.get("variation_type") or "maximal").strip().lower()
+    if variation_type not in {"linear", "bow", "maximal"}:
+        raise ValueError(
+            "generation.variation_type must be one of: linear, bow, maximal."
+        )
 
 
 def main():
@@ -101,6 +147,13 @@ def main():
         "--config",
         default="config.yaml",
         help="Path to config.yaml (default: config.yaml)",
+    )
+    parser.add_argument(
+        "--variation_type",
+        choices=["linear", "bow", "maximal"],
+        help=(
+            "Attractor-number variation. Overrides generation.variation_type in config."
+        ),
     )
     args = parser.parse_args()
 
@@ -155,7 +208,17 @@ def main():
 
     num_attractors = int(gen_cfg["num_attractors"])
     num_pairs = int(gen_cfg["num_pairs"])
-    use_trick = bool(gen_cfg.get("use_trick", True))
+    variation_type = (
+        args.variation_type or gen_cfg.get("variation_type") or "maximal"
+    ).strip().lower()
+    if variation_type not in {"linear", "bow", "maximal"}:
+        raise ValueError(
+            "variation_type must be one of: linear, bow, maximal."
+        )
+    base_attractor_numbers = build_base_attractor_numbers(
+        num_attractors, variation_type
+    )
+    source_attractor_numbers = invert_attractor_numbers(base_attractor_numbers)
 
     if num_attractors < 1:
         raise ValueError("num_attractors must be >= 1.")
@@ -171,20 +234,22 @@ def main():
     out_dir = resolve_path(config_dir, out_cfg["paradigm"])
     os.makedirs(out_dir, exist_ok=True)
     out_file = os.path.join(
-        out_dir, f"obj_rel_across_anim_pairs_{num_attractors}.csv"
+        out_dir, f"obj_rel_across_anim_pairs_{variation_type}_{num_attractors}.csv"
     )
     data_dir = resolve_path(config_dir, out_cfg.get("data_dir", "data"))
     jsonl_dir = os.path.join(data_dir, out_cfg["paradigm"])
     os.makedirs(jsonl_dir, exist_ok=True)
     jsonl_file = os.path.join(
-        jsonl_dir, f"obj_rel_across_anim_pairs_{num_attractors}.jsonl"
+        jsonl_dir,
+        f"obj_rel_across_anim_pairs_{variation_type}_{num_attractors}.jsonl",
     )
 
     fieldnames = [
         "pair_id",
         "num_attractors",
-        "use_trick",
-        "attractor_number_mode",
+        "variation_type",
+        "base_attractor_numbers",
+        "source_attractor_numbers",
         "main_subject_lemma",
         "main_subject_plural",
         "main_verb_sg",
@@ -226,42 +291,20 @@ def main():
 
                 mv = random.choice(mv_list)
 
-                attractor_number = choose_attractor_number(use_trick, "singular")
-                attractor_number_mode = (
-                    "opposite" if use_trick else attractor_number
+                blocks_singular = build_clause_blocks(
+                    es_samples,
+                    ev_samples,
+                    c_samples,
+                    d_word,
+                    base_attractor_numbers,
                 )
-                blocks_singular = []
-                blocks_plural = []
-                for idx in range(num_attractors):
-                    es = es_samples[idx]
-                    ev = ev_samples[idx]
-                    c = c_samples[idx]
-
-                    if use_trick:
-                        es_sing = es["lemma"]
-                        es_plur = es["plural"]
-                        ev_sing = ev["sg"]
-                        ev_plur = ev["pl"]
-
-                        blocks_singular.append(
-                            f"{c} {d_word} {es_plur} {ev_plur}"
-                        )
-                        blocks_plural.append(
-                            f"{c} {d_word} {es_sing} {ev_sing}"
-                        )
-                    else:
-                        if attractor_number == "singular":
-                            es_word = es["lemma"]
-                            ev_word = ev["sg"]
-                        else:
-                            es_word = es["plural"]
-                            ev_word = ev["pl"]
-                        blocks_singular.append(
-                            f"{c} {d_word} {es_word} {ev_word}"
-                        )
-                        blocks_plural.append(
-                            f"{c} {d_word} {es_word} {ev_word}"
-                        )
+                blocks_plural = build_clause_blocks(
+                    es_samples,
+                    ev_samples,
+                    c_samples,
+                    d_word,
+                    source_attractor_numbers,
+                )
 
                 sentence_singular = build_sentence(
                     d_word, ms_lemma, blocks_singular, mv["sg"]
@@ -273,8 +316,9 @@ def main():
                 row = {
                     "pair_id": pair_id,
                     "num_attractors": num_attractors,
-                    "use_trick": use_trick,
-                    "attractor_number_mode": attractor_number_mode,
+                    "variation_type": variation_type,
+                    "base_attractor_numbers": "|".join(base_attractor_numbers),
+                    "source_attractor_numbers": "|".join(source_attractor_numbers),
                     "main_subject_lemma": ms_lemma,
                     "main_subject_plural": ms_plural,
                     "main_verb_sg": mv["sg"],
@@ -297,6 +341,9 @@ def main():
                     "MV_base": mv["sg"],
                     "MS_source": ms_plural,
                     "MV_source": mv["pl"],
+                    "variation_type": variation_type,
+                    "base_attractor_numbers": base_attractor_numbers,
+                    "source_attractor_numbers": source_attractor_numbers,
                 }
                 jsonl_out.write(json.dumps(jsonl_row, ensure_ascii=True) + "\n")
 

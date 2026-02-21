@@ -5,9 +5,12 @@ generation:
   num_attractors: 6
   num_pairs: 500
 
-  # If true, attractors are opposite in number to the main subject.
-  # If false, attractor number is random per pair.
-  use_trick: true
+  # Attractor-number variation for the Base sentence (MS/MV singular):
+  # - linear: first N-1 singular, last plural
+  # - bow: first N-1 plural, last singular
+  # - maximal: all N plural
+  # Source sentence (MS/MV plural) is always the exact inverse pattern.
+  variation_type: maximal
 
   # Reproducibility
   seed: 13

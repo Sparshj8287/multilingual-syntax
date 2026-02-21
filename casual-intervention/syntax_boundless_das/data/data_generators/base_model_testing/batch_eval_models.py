@@ -14,9 +14,10 @@ DEFAULT_MODELS = [
     "google/gemma-3-1b-it",
     "google/gemma-3-4b-it",
     "google/gemma-3-12b-it",
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "meta-llama/Llama-3.2-1B-Instruct",
-    "meta-llama/Llama-3.2-3B-Instruct",
+    # "google/gemma-3-27b-it",
+    "/home/models/Meta-Llama-3-8B-Instruct",
+    "/home/models/Llama-3.2-1B-Instruct",
+    "/home/models/Llama-3.2-3B-Instruct",
 ]
 
 PROMPT_TEMPLATE = """Complete the following sentence with the correct form of the verb. Please answer in one word:
@@ -33,14 +34,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data-dir",
         default=(
-            "casual-intervention/syntax_boundless_das/data/data_generators/templates/data"
+            "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/data/data_generators/templates/data/obj_rel_across_anim/"
         ),
         help="Root directory containing JSONL files.",
     )
     parser.add_argument(
         "--results-dir",
         default=(
-            "casual-intervention/syntax_boundless_das/data/data_generators/base_model_testing/results"
+            "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/data/data_generators/base_model_testing/results"
         ),
         help="Directory to write results to.",
     )
@@ -74,6 +75,11 @@ def parse_args() -> argparse.Namespace:
         default=13,
         help="Random seed for sampling.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Recompute results even if output files already look complete.",
+    )
     return parser.parse_args()
 
 
@@ -95,6 +101,31 @@ def load_jsonl(path: str) -> list[dict]:
                 continue
             entries.append(json.loads(line))
     return entries
+
+
+def has_complete_result(path: str) -> bool:
+    if not os.path.isfile(path):
+        return False
+    required_prefixes = {
+        "jsonl_path:",
+        "total_entries:",
+        "base_overall_accuracy:",
+        "source_overall_accuracy:",
+        "base_correct:",
+        "source_correct:",
+        "base_ties:",
+        "source_ties:",
+    }
+    seen: set[str] = set()
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            for prefix in required_prefixes:
+                if line.startswith(prefix):
+                    seen.add(prefix)
+            if len(seen) == len(required_prefixes):
+                return True
+    return False
 
 
 def sanitize_model_name(model_name: str) -> str:
@@ -260,6 +291,9 @@ def evaluate_jsonl(
         base_options = [mv_base, mv_source]
         base_sentence_masked = mask_verb(base_sentence, mv_base)
         base_prompt = build_prompt(base_sentence_masked, base_options)
+        if idx == 0:
+            print(f"\n--- Example Prompts for {os.path.basename(jsonl_path)} ---")
+            print(f"Base Prompt:\n{base_prompt}")
         (
             base_inputs,
             base_option_results,
@@ -274,9 +308,12 @@ def evaluate_jsonl(
         elif base_correct_prob == base_wrong_prob:
             base_ties += 1
 
-        source_options = [mv_source, mv_base]
+        source_options = [mv_base, mv_source]
         source_sentence_masked = mask_verb(source_sentence, mv_source)
         source_prompt = build_prompt(source_sentence_masked, source_options)
+        if idx == 0:
+            print(f"Source Prompt:\n{source_prompt}")
+            print("---------------------------------------------------\n")
         (
             source_inputs,
             source_option_results,
@@ -340,7 +377,8 @@ def evaluate_jsonl(
     source_accuracy = source_correct / total
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as handle:
+    tmp_output_path = output_path + ".tmp"
+    with open(tmp_output_path, "w", encoding="utf-8") as handle:
         handle.write(f"jsonl_path: {jsonl_path}\n")
         handle.write(f"total_entries: {total}\n")
         handle.write(f"base_overall_accuracy: {base_accuracy:.6f}\n")
@@ -351,6 +389,7 @@ def evaluate_jsonl(
         handle.write(f"source_ties: {source_ties}\n")
         handle.write("\n")
         handle.write("\n".join(sample_blocks))
+    os.replace(tmp_output_path, output_path)
 
 
 def main() -> None:
@@ -363,21 +402,38 @@ def main() -> None:
 
     dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     for model_name in args.models:
-        print(f"\nLoading model: {model_name}")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            device_map="auto",
-            torch_dtype=dtype,
-        )
-        model.eval()
-
         model_dir = os.path.join(args.results_dir, sanitize_model_name(model_name))
+        jobs: list[tuple[str, str]] = []
+        skipped_done = 0
         for jsonl_path in jsonl_files:
             rel_path = os.path.relpath(jsonl_path, args.data_dir)
             rel_dir = os.path.dirname(rel_path)
             base_name = os.path.splitext(os.path.basename(jsonl_path))[0] + ".txt"
             output_path = os.path.join(model_dir, rel_dir, base_name)
+            if not args.overwrite and has_complete_result(output_path):
+                skipped_done += 1
+                continue
+            jobs.append((jsonl_path, output_path))
+
+        if not jobs:
+            print(
+                f"\nSkipping model {model_name}: all {len(jsonl_files)} files already complete."
+            )
+            continue
+
+        print(
+            f"\nLoading model: {model_name} "
+            f"(pending {len(jobs)} files, skipped {skipped_done})"
+        )
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map= "cuda:1",
+            torch_dtype=dtype,
+        )
+        model.eval()
+
+        for jsonl_path, output_path in jobs:
             print(f"Evaluating {jsonl_path}")
             evaluate_jsonl(
                 model,

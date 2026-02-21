@@ -12,7 +12,9 @@ urd/
 results/
 ara/
 obj_rel_across_anim/
-
+mink-plus-plus/
+plots/ 
+results/
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo

@@ -1,13 +1,11 @@
 import argparse
 import math
+from typing import Dict, Optional, Tuple, Union
 import torch
-from transformers import AutoTokenizer, Gemma3ForCausalLM
+from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
 
-DEFAULT_PROMPT = """Fill in the blank with the grammatically correct verb form. Output the correct word and do not add any other text:
-Sentence: The competitor who the guy starves _____
-Options: emerge, emerges
-Answer:
-"""
+DEFAULT_PROMPT = """The representative that the finches encourage """
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -16,7 +14,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--ckpt",
-        default="google/gemma-3-1b-it",
+        default="google/gemma-3-12b-it",
         help="Model checkpoint name or local path.",
     )
     parser.add_argument(
@@ -27,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-new-tokens",
         type=int,
-        default=32,
+        default=1000,
         help="Maximum number of new tokens to generate.",
     )
     parser.add_argument(
@@ -41,6 +39,17 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=5,
         help="Number of top next-token predictions to print.",
+    )
+    parser.add_argument(
+        "--cuda-device",
+        type=int,
+        default=None,
+        help="CUDA device index to force (for example: 2 for cuda:2). Defaults to auto device mapping.",
+    )
+    parser.add_argument(
+        "--no-chat-template",
+        action="store_true",
+        help="Disable chat templating and pass prompt directly.",
     )
     return parser.parse_args()
 
@@ -64,8 +73,44 @@ def options_from_prompt(prompt: str) -> list[str]:
     return []
 
 
+def resolve_device_map(cuda_device: Optional[int]) -> Union[str, Dict[str, str]]:
+    if not torch.cuda.is_available():
+        if cuda_device is not None:
+            print("CUDA is not available; ignoring --cuda-device and running on CPU.")
+        return {"": "cpu"}
+
+    if cuda_device is None:
+        return "auto"
+
+    available = torch.cuda.device_count()
+    print(f"Available CUDA devices: {available}")
+    if cuda_device < 0 or cuda_device >= available:
+        raise ValueError(
+            f"Invalid --cuda-device={cuda_device}. Available CUDA devices: 0..{available - 1}"
+        )
+    return {"": f"cuda:{cuda_device}"}
+
+
+def build_model_inputs(
+    tokenizer: AutoTokenizer, prompt: str, device: torch.device, use_chat_template: bool
+) -> Tuple[dict, str]:
+    if use_chat_template:
+        if not hasattr(tokenizer, "apply_chat_template"):
+            raise ValueError(
+                "Tokenizer does not support apply_chat_template. "
+                "Upgrade transformers/tokenizer or use --no-chat-template."
+            )
+        messages = [{"role": "user", "content": prompt}]
+        formatted_prompt = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+    else:
+        formatted_prompt = prompt
+    return tokenizer(formatted_prompt, return_tensors="pt").to(device), formatted_prompt
+
+
 def compute_option_probability(
-    model: Gemma3ForCausalLM,
+    model: Gemma3ForConditionalGeneration,
     tokenizer: AutoTokenizer,
     model_inputs: dict,
     next_token_probs: torch.Tensor,
@@ -101,14 +146,17 @@ def main() -> None:
         options = options_from_prompt(args.prompt)
 
     tokenizer = AutoTokenizer.from_pretrained(args.ckpt)
-    model = Gemma3ForCausalLM.from_pretrained(
+    device_map = resolve_device_map(args.cuda_device)
+    model = Gemma3ForConditionalGeneration.from_pretrained(
         args.ckpt,
-        device_map="auto",
+        device_map=device_map,
         torch_dtype=dtype,
     )
     model.eval()
 
-    model_inputs = tokenizer(args.prompt, return_tensors="pt").to(model.device)
+    model_inputs, formatted_prompt = build_model_inputs(
+        tokenizer, args.prompt, model.device, use_chat_template=not args.no_chat_template
+    )
     input_len = model_inputs.input_ids.shape[-1]
 
     with torch.inference_mode():
@@ -138,6 +186,15 @@ def main() -> None:
     full_text = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
 
     print("Prompt:\n" + args.prompt)
+    if not args.no_chat_template:
+        print("\nTemplated prompt:\n" + formatted_prompt)
+    if torch.cuda.is_available():
+        if args.cuda_device is None:
+            print("\nCUDA device selection: auto")
+        else:
+            print(f"\nCUDA device selection: cuda:{args.cuda_device}")
+    else:
+        print("\nCUDA device selection: CPU")
     print("\nCompletion:\n" + completion)
     print("\nFull text:\n" + full_text)
     print("\nOption probabilities:")
