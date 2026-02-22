@@ -2,7 +2,7 @@ import argparse
 from typing import Dict, Optional, Tuple, Union
 
 import torch
-from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
+from transformers import AutoTokenizer, Gemma3ForCausalLM
 
 DEFAULT_PROMPT = "The competitor who the guys starve "
 DEFAULT_CHOICE_A = "emerge"
@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--ckpt",
-        default="google/gemma-3-4b-pt",
+        default="google/gemma-3-1b-pt",
         help="Model checkpoint name or local path.",
     )
     parser.add_argument(
@@ -129,7 +129,7 @@ def main() -> None:
 
     tokenizer = AutoTokenizer.from_pretrained(args.ckpt)
     device_map = resolve_device_map(args.cuda_device)
-    model = Gemma3ForConditionalGeneration.from_pretrained(
+    model = Gemma3ForCausalLM.from_pretrained(
         args.ckpt,
         device_map=device_map,
         torch_dtype=dtype,
@@ -189,8 +189,8 @@ def main() -> None:
         )
 
     print("\nRaw next-token probabilities (full vocabulary):")
-    print(f"- P({args.choice_a}) = {a_raw:.100f}")
-    print(f"- P({args.choice_b}) = {b_raw:.100f}")
+    print(f"- P({args.choice_a}) = {a_raw:.50f}")
+    print(f"- P({args.choice_b}) = {b_raw:.50f}")
 
     print("\nRenormalized over the two candidates only:")
     print(f"- P({args.choice_a} | {args.choice_a} vs {args.choice_b}) = {a_renorm:.6f}")

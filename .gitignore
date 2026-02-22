@@ -15,6 +15,7 @@ obj_rel_across_anim/
 mink-plus-plus/
 plots/ 
 results/
+observations/
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo

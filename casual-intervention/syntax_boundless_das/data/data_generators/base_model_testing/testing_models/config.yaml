@@ -1,0 +1,46 @@
+evaluation:
+  # Root containing linear/, bow/, maximal/ JSONL files.
+  input_root: ../../templates/data/obj_rel_across_anim
+  input_variations:
+    - linear
+    - bow
+    - maximal
+  input_glob: "*.jsonl"
+
+  # Output mirrors input variation subdirectories.
+  output_root: observations
+
+  # Save exactly N random valid examples (reservoir sampled) across the full run.
+  verbose_sample_size: 50
+  verbose_log_path: observations/verbose_random_50.txt
+  random_seed: 13
+  show_progress_bar: true
+  progress_mininterval_sec: 0.1
+  include_sample_logs_in_results: true
+  sample_logs_per_file: 50
+  sample_log_include_greedy_completion: true
+  sample_log_max_new_tokens: 24
+
+inference:
+  # base-model only; no chat template is used by the script.
+  device_map: auto
+  cuda_device: null
+  torch_dtype: bfloat16
+  use_fast_tokenizer: False
+  batch_size: 1
+
+models:
+  - name: gemma-3-1b-pt
+    checkpoint: google/gemma-3-1b-pt
+  - name: gemma-3-4b-pt
+    checkpoint: google/gemma-3-4b-pt
+  - name: gemma-3-12b-pt
+    checkpoint: google/gemma-3-12b-pt
+
+auxiliary_verb_pairs:
+  - [" is", " are"]
+  - [" has", " have"]
+  - [" does", " do"]
+  - [" goes", " go"]
+  - [" seems", " seem"]
+  - [" gets", " get"]

@@ -36,5 +36,5 @@ paths:
   verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs.jsonl
 
 output:
-  paradigm: obj_rel_across_anim
+  paradigm: obj_rel_across_anim/maximal
   data_dir: data
