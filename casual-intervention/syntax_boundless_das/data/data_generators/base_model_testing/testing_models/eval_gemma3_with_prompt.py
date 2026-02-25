@@ -14,10 +14,17 @@ try:
 except ImportError:  # pragma: no cover
     tqdm = None
 
+PROMPT_TEMPLATE = """Complete the following sentence with the correct form of the verb. Please answer in one word:
+Sentence: {sentence}
+Options: {options}
+Answer:
+"""
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Evaluate subject-verb agreement on base Gemma-3 checkpoints "
+            "Evaluate subject-verb agreement on Gemma-3 IT checkpoints "
             "using renormalized two-candidate next-token probabilities."
         )
     )
@@ -250,6 +257,31 @@ def replace_final_verb(sentence: str, old_verb: str, new_verb: str) -> str:
     return updated + ("." if has_period else "")
 
 
+def build_prompt(sentence: str, option_a: str, option_b: str) -> str:
+    clean_sentence = sentence.strip()
+    if clean_sentence.endswith("."):
+        clean_sentence = clean_sentence[:-1]
+    options = f"{option_a.strip()}, {option_b.strip()}"
+    return PROMPT_TEMPLATE.format(sentence=clean_sentence, options=options)
+
+
+def format_model_input(
+    tokenizer: AutoTokenizer,
+    text_prompt: str,
+    use_chat_template: bool,
+) -> str:
+    if not use_chat_template:
+        return text_prompt
+    if not hasattr(tokenizer, "apply_chat_template"):
+        raise ValueError(
+            "Tokenizer does not support apply_chat_template; disable chat template."
+        )
+    messages = [{"role": "user", "content": text_prompt}]
+    return tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
+    )
+
+
 def score_two_candidates(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
@@ -257,9 +289,13 @@ def score_two_candidates(
     context: str,
     candidate_a_id: int,
     candidate_b_id: int,
+    use_chat_template: bool,
 ) -> dict[str, float]:
-    model_inputs = tokenizer(context, return_tensors="pt")
+    formatted_prompt = format_model_input(tokenizer, context, use_chat_template)
+    model_inputs = tokenizer(formatted_prompt, return_tensors="pt")
+
     model_inputs = {k: v.to(model_device) for k, v in model_inputs.items()}
+
 
     with torch.inference_mode():
         outputs = model(**model_inputs)
@@ -331,8 +367,10 @@ def greedy_completion(
     model_device: torch.device,
     prompt: str,
     max_new_tokens: int,
+    use_chat_template: bool,
 ) -> str:
-    model_inputs = tokenizer(prompt, return_tensors="pt")
+    formatted_prompt = format_model_input(tokenizer, prompt, use_chat_template)
+    model_inputs = tokenizer(formatted_prompt, return_tensors="pt")
     model_inputs = {k: v.to(model_device) for k, v in model_inputs.items()}
     input_len = model_inputs["input_ids"].shape[-1]
     with torch.inference_mode():
@@ -403,6 +441,7 @@ def build_per_file_sample_lines(
     model_device: torch.device,
     include_greedy_completion: bool,
     max_new_tokens: int,
+    use_chat_template: bool,
 ) -> list[str]:
     lines: list[str] = []
     sample_counter = 1
@@ -414,6 +453,7 @@ def build_per_file_sample_lines(
                 model_device,
                 sample["base_context"],
                 max_new_tokens=max_new_tokens,
+                use_chat_template=use_chat_template,
             )
             if include_greedy_completion
             else None
@@ -440,6 +480,7 @@ def build_per_file_sample_lines(
                 model_device,
                 sample["source_context"],
                 max_new_tokens=max_new_tokens,
+                use_chat_template=use_chat_template,
             )
             if include_greedy_completion
             else None
@@ -652,6 +693,19 @@ def main() -> None:
         raise ValueError("config.yaml must include a non-empty models list.")
     if not aux_pairs:
         raise ValueError("config.yaml must include auxiliary_verb_pairs.")
+    it_model_cfgs = [
+        m
+        for m in model_cfgs
+        if "-it" in str(m.get("name", "")).lower()
+        or "-it" in str(m.get("checkpoint", "")).lower()
+    ]
+    if not it_model_cfgs:
+        raise ValueError("No -it models found in config.yaml models list.")
+    if len(it_model_cfgs) != len(model_cfgs):
+        print(
+            f"Skipping {len(model_cfgs) - len(it_model_cfgs)} non-IT model(s); "
+            "this script evaluates IT models only."
+        )
 
     input_root = resolve_path(config_dir, eval_cfg["input_root"])
     output_root = resolve_path(config_dir, eval_cfg["output_root"])
@@ -669,6 +723,7 @@ def main() -> None:
         eval_cfg.get("sample_log_include_greedy_completion", True)
     )
     sample_log_max_new_tokens = int(eval_cfg.get("sample_log_max_new_tokens", 24))
+    use_chat_template = bool(eval_cfg.get("use_chat_template", True))
 
     rng = random.Random(seed)
     sampler = ReservoirSampler(verbose_sample_size, rng)
@@ -688,7 +743,7 @@ def main() -> None:
     jsonl_entry_counts = {path: count_jsonl_entries(path) for path in jsonl_paths}
 
     examples_per_model = sum(count * 3 for count in jsonl_entry_counts.values())
-    total_examples_all_models = examples_per_model * len(model_cfgs)
+    total_examples_all_models = examples_per_model * len(it_model_cfgs)
 
 
 
@@ -708,7 +763,7 @@ def main() -> None:
     )
 
     try:
-        for model_entry in model_cfgs:
+        for model_entry in it_model_cfgs:
             model_name = model_entry["name"]
             checkpoint = model_entry["checkpoint"]
             print(f"\n=== Loading model: {model_name} ({checkpoint}) ===")
@@ -844,8 +899,16 @@ def main() -> None:
                     base_sentence = item["base_sentence"]
                     source_sentence = item["source_sentence"]
 
-                    base_baseline_ctx = f"The {ms_base} "
-                    source_baseline_ctx = f"The {ms_source} "
+                    base_baseline_ctx = build_prompt(
+                        sentence=f"The {ms_base}",
+                        option_a=mv_base,
+                        option_b=mv_source,
+                    )
+                    source_baseline_ctx = build_prompt(
+                        sentence=f"The {ms_source}",
+                        option_a=mv_source,
+                        option_b=mv_base,
+                    )
                     base_baseline_main = score_two_candidates(
                         model,
                         tokenizer,
@@ -853,6 +916,7 @@ def main() -> None:
                         base_baseline_ctx,
                         mv_base_id,
                         mv_source_id,
+                        use_chat_template=use_chat_template,
                     )
                     source_baseline_main = score_two_candidates(
                         model,
@@ -861,6 +925,7 @@ def main() -> None:
                         source_baseline_ctx,
                         mv_source_id,
                         mv_base_id,
+                        use_chat_template=use_chat_template,
                     )
                     main_filter2_pass = (
                         base_baseline_main["renorm_a"] > base_baseline_main["renorm_b"]
@@ -892,9 +957,19 @@ def main() -> None:
                     else:
                         valid_main += 1
 
-                        base_context = context_before_final_verb(base_sentence, mv_base)
-                        source_context = context_before_final_verb(
-                            source_sentence, mv_source
+                        base_context = build_prompt(
+                            sentence=context_before_final_verb(
+                                base_sentence, mv_base
+                            ),
+                            option_a=mv_base,
+                            option_b=mv_source,
+                        )
+                        source_context = build_prompt(
+                            sentence=context_before_final_verb(
+                                source_sentence, mv_source
+                            ),
+                            option_a=mv_source,
+                            option_b=mv_base,
                         )
                         base_main = score_two_candidates(
                             model,
@@ -903,6 +978,7 @@ def main() -> None:
                             base_context,
                             mv_base_id,
                             mv_source_id,
+                            use_chat_template=use_chat_template,
                         )
                         source_main = score_two_candidates(
                             model,
@@ -911,6 +987,7 @@ def main() -> None:
                             source_context,
                             mv_source_id,
                             mv_base_id,
+                            use_chat_template=use_chat_template,
                         )
                         update_side_metrics(
                             main_metrics,
@@ -1018,14 +1095,22 @@ def main() -> None:
                             {
                                 "line_index": idx,
                                 "pass_filter2": False,
-                                "base_context": f"The {ms_base} ",
+                                "base_context": build_prompt(
+                                    sentence=f"The {ms_base}",
+                                    option_a="N/A",
+                                    option_b="N/A",
+                                ),
                                 "base_correct": "N/A",
                                 "base_wrong": "N/A",
                                 "base_raw_correct": 0.0,
                                 "base_raw_wrong": 0.0,
                                 "base_renorm_correct": 0.0,
                                 "base_renorm_wrong": 0.0,
-                                "source_context": f"The {ms_source} ",
+                                "source_context": build_prompt(
+                                    sentence=f"The {ms_source}",
+                                    option_a="N/A",
+                                    option_b="N/A",
+                                ),
                                 "source_correct": "N/A",
                                 "source_wrong": "N/A",
                                 "source_raw_correct": 0.0,
@@ -1040,8 +1125,16 @@ def main() -> None:
                         continue
 
                     aux_sg, aux_pl, aux_sg_id, aux_pl_id = rng.choice(aux_pair_ids)
-                    base_baseline_aux_ctx = f"The {ms_base} "
-                    source_baseline_aux_ctx = f"The {ms_source} "
+                    base_baseline_aux_ctx = build_prompt(
+                        sentence=f"The {ms_base}",
+                        option_a=aux_sg,
+                        option_b=aux_pl,
+                    )
+                    source_baseline_aux_ctx = build_prompt(
+                        sentence=f"The {ms_source}",
+                        option_a=aux_pl,
+                        option_b=aux_sg,
+                    )
                     base_baseline_aux = score_two_candidates(
                         model,
                         tokenizer,
@@ -1049,6 +1142,7 @@ def main() -> None:
                         base_baseline_aux_ctx,
                         aux_sg_id,
                         aux_pl_id,
+                        use_chat_template=use_chat_template,
                     )
                     source_baseline_aux = score_two_candidates(
                         model,
@@ -1057,6 +1151,7 @@ def main() -> None:
                         source_baseline_aux_ctx,
                         aux_pl_id,
                         aux_sg_id,
+                        use_chat_template=use_chat_template,
                     )
                     aux_filter2_pass = (
                         base_baseline_aux["renorm_a"] > base_baseline_aux["renorm_b"]
@@ -1095,11 +1190,19 @@ def main() -> None:
                     aux_source_sentence = replace_final_verb(
                         source_sentence, mv_source, aux_pl
                     )
-                    aux_base_context = context_before_final_verb(
-                        aux_base_sentence, aux_sg
+                    aux_base_context = build_prompt(
+                        sentence=context_before_final_verb(
+                            aux_base_sentence, aux_sg
+                        ),
+                        option_a=aux_sg,
+                        option_b=aux_pl,
                     )
-                    aux_source_context = context_before_final_verb(
-                        aux_source_sentence, aux_pl
+                    aux_source_context = build_prompt(
+                        sentence=context_before_final_verb(
+                            aux_source_sentence, aux_pl
+                        ),
+                        option_a=aux_pl,
+                        option_b=aux_sg,
                     )
                     base_aux = score_two_candidates(
                         model,
@@ -1108,6 +1211,7 @@ def main() -> None:
                         aux_base_context,
                         aux_sg_id,
                         aux_pl_id,
+                        use_chat_template=use_chat_template,
                     )
                     source_aux = score_two_candidates(
                         model,
@@ -1116,6 +1220,7 @@ def main() -> None:
                         aux_source_context,
                         aux_pl_id,
                         aux_sg_id,
+                        use_chat_template=use_chat_template,
                     )
                     update_side_metrics(
                         aux_metrics,
@@ -1149,6 +1254,7 @@ def main() -> None:
                         model_device=model_device,
                         include_greedy_completion=sample_log_include_greedy_completion,
                         max_new_tokens=sample_log_max_new_tokens,
+                        use_chat_template=use_chat_template,
                     )
                 filter2_main_sample_lines = build_filter2_sample_lines(
                     label="Main Verbs (5 random)",

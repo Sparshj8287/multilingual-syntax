@@ -20,6 +20,7 @@ evaluation:
   sample_logs_per_file: 50
   sample_log_include_greedy_completion: true
   sample_log_max_new_tokens: 24
+  use_chat_template: true
 
 inference:
   # base-model only; no chat template is used by the script.
@@ -30,12 +31,12 @@ inference:
   batch_size: 1
 
 models:
-  - name: gemma-3-1b-pt
-    checkpoint: google/gemma-3-1b-pt
-  - name: gemma-3-4b-pt
-    checkpoint: google/gemma-3-4b-pt
-  - name: gemma-3-12b-pt
-    checkpoint: google/gemma-3-12b-pt
+  - name: gemma-3-1b-it-chat 
+    checkpoint: google/gemma-3-1b-it  # 1B checkpoint
+  - name: gemma-3-4b-it-chat
+    checkpoint: google/gemma-3-4b-it  # 4B checkpoint
+  - name: gemma-3-12b-it-chat
+    checkpoint: google/gemma-3-12b-it  # 12B checkpoint
 
 auxiliary_verb_pairs:
   - [" is", " are"]
