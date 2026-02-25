@@ -120,36 +120,25 @@ def adjust_dtype_for_hardware(dtype: torch.dtype) -> torch.dtype:
     return dtype
 
 
-def pick_single_token_candidate(
-    tokenizer: AutoTokenizer, candidate: str
-) -> dict[str, Any]:
+def strict_next_token_id(
+    tokenizer: AutoTokenizer,
+    candidate: str,
+    *,
+    model_name: str,
+    dataset: str,
+    row_idx: int,
+    field_name: str,
+) -> int:
     base = candidate.strip()
-    tried: list[tuple[str, list[int]]] = []
-    for surface in (f" {base}", base):
-        ids = tokenizer.encode(surface, add_special_tokens=False)
-        tried.append((surface, ids))
-        if len(ids) == 1:
-            return {
-                "selected_surface": surface,
-                "token_ids": ids,
-                "token_id": ids[0],
-                "exact_single_token": True,
-            }
-    non_empty = [(surface, ids) for surface, ids in tried if ids]
-    if non_empty:
-        best_surface, best_ids = min(non_empty, key=lambda item: len(item[1]))
-        return {
-            "selected_surface": best_surface,
-            "token_ids": best_ids,
-            "token_id": best_ids[0],
-            "exact_single_token": False,
-        }
-    return {
-        "selected_surface": base,
-        "token_ids": [],
-        "token_id": None,
-        "exact_single_token": False,
-    }
+    without_space_ids = tokenizer.encode(base, add_special_tokens=False)
+    if len(without_space_ids) == 1:
+        return without_space_ids[0]
+
+    raise ValueError(
+        "Main verb is not a single next-token candidate. "
+        f"model={model_name}, dataset={dataset}, row_idx={row_idx}, field={field_name}, "
+        f"verb='{base}', ids_without_space={without_space_ids}"
+    )
 
 
 def score_two_candidates(
@@ -407,15 +396,22 @@ def main() -> None:
                     if not (mv_base and mv_source and ms_base and ms_source):
                         continue
 
-                    mv_base_info = pick_single_token_candidate(tokenizer, mv_base)
-                    mv_source_info = pick_single_token_candidate(tokenizer, mv_source)
-                    if (
-                        not mv_base_info["exact_single_token"]
-                        or not mv_source_info["exact_single_token"]
-                        or mv_base_info["token_id"] is None
-                        or mv_source_info["token_id"] is None
-                    ):
-                        continue
+                    mv_base_id = strict_next_token_id(
+                        tokenizer,
+                        mv_base,
+                        model_name=model_name,
+                        dataset=f"{variation}/{jsonl_path.name}",
+                        row_idx=row_idx,
+                        field_name="MV_base",
+                    )
+                    mv_source_id = strict_next_token_id(
+                        tokenizer,
+                        mv_source,
+                        model_name=model_name,
+                        dataset=f"{variation}/{jsonl_path.name}",
+                        row_idx=row_idx,
+                        field_name="MV_source",
+                    )
 
                     base_context = f"The {ms_base} "
                     source_context = f"The {ms_source} "
@@ -425,16 +421,16 @@ def main() -> None:
                         tokenizer,
                         model_device,
                         base_context,
-                        mv_base_info["token_id"],
-                        mv_source_info["token_id"],
+                        mv_base_id,
+                        mv_source_id,
                     )
                     source_scores = score_two_candidates(
                         model,
                         tokenizer,
                         model_device,
                         source_context,
-                        mv_source_info["token_id"],
-                        mv_base_info["token_id"],
+                        mv_source_id,
+                        mv_base_id,
                     )
 
                     base_ok = base_scores["renorm_a"] > base_scores["renorm_b"]
