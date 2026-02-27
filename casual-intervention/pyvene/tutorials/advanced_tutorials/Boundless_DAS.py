@@ -108,8 +108,7 @@ def main() -> None:
     )
 
 
-    print(raw_train[3])
-    breakpoint()
+
     train_dataset = Dataset.from_dict(
         {
             "input_ids": raw_train[0],

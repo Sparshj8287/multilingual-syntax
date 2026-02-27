@@ -1,11 +1,9 @@
 evaluation:
-  input_root: ../data/obj_rel_across_anim
+  input_root: ../data/simple_agreement
   output_root: results
-  dataset_name: obj_rel_across_anim
+  dataset_name: simple_agreement
   input_variations:
-    - linear
-    - bow
-    - maximal
+    - 
   input_glob: "*.jsonl"
   sample_logs_per_file: 50
   random_seed: 13

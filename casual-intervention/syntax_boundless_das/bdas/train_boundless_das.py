@@ -1,0 +1,1148 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import random
+import sys
+from pathlib import Path
+from typing import Any, Callable
+
+import torch
+import torch.nn.functional as F
+import yaml
+from torch.nn import CrossEntropyLoss
+from torch.utils.data import DataLoader
+from tqdm import tqdm, trange
+from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+CASUAL_INTERVENTION_ROOT = SCRIPT_DIR.parent.parent
+PYVENE_ROOT = CASUAL_INTERVENTION_ROOT / "pyvene"
+if str(PYVENE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PYVENE_ROOT))
+
+from pyvene import (  # noqa: E402
+    BoundlessRotatedSpaceIntervention,
+    IntervenableConfig,
+    IntervenableModel,
+    RepresentationConfig,
+    count_parameters,
+    set_seed,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Train Boundless DAS on simple-agreement JSONL data."
+    )
+    parser.add_argument(
+        "--config",
+        default=str(SCRIPT_DIR / "config.yaml"),
+        help="Path to YAML config.",
+    )
+    return parser.parse_args()
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle)
+    return data or {}
+
+
+def resolve_path(base_dir: Path, maybe_path: str) -> Path:
+    path = Path(maybe_path)
+    if path.is_absolute():
+        return path
+    return (base_dir / path).resolve()
+
+
+def sanitize_model_dir_name(model_name: str, model_path: str) -> str:
+    candidate = (model_name or "").strip()
+    if not candidate:
+        candidate = model_path.strip()
+    if "/" in candidate:
+        candidate = candidate.split("/")[-1]
+    return candidate.replace(" ", "_")
+
+
+def resolve_device_map(device_map_value: Any):
+    if device_map_value is None:
+        return None
+    if isinstance(device_map_value, str):
+        normalized = device_map_value.strip().lower()
+        if normalized in {"", "none", "null"}:
+            return None
+        if normalized == "gpu0":
+            return "cuda:0"
+        if normalized == "gpu1":
+            return "cuda:1"
+        if normalized == "gpu2":
+            return "cuda:2"
+    return device_map_value
+
+
+def resolve_torch_dtype(dtype_value: str | None):
+    if not dtype_value:
+        return None
+    normalized = dtype_value.strip().lower()
+    mapping = {
+        "auto": "auto",
+        "float32": torch.float32,
+        "fp32": torch.float32,
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+    }
+    if normalized not in mapping:
+        raise ValueError(
+            "Unsupported torch_dtype. Use one of: auto, float32/fp32, float16/fp16, bfloat16/bf16."
+        )
+    return mapping[normalized]
+
+
+def load_model_and_tokenizer(
+    model_path: str,
+    runtime_cfg: dict[str, Any],
+    hf_token: str | None,
+):
+    use_fast = bool(runtime_cfg.get("use_fast_tokenizer", True))
+    device = torch.device(runtime_cfg.get("device", "cuda"))
+    device_map = resolve_device_map(runtime_cfg.get("device_map"))
+    torch_dtype = resolve_torch_dtype(runtime_cfg.get("torch_dtype", "bfloat16"))
+
+    if not torch.cuda.is_available() and device.type == "cuda":
+        device = torch.device("cpu")
+    if not torch.cuda.is_available() and device_map is not None:
+        device_map = {"": "cpu"}
+    if device.type == "cpu" and torch_dtype in {torch.float16, torch.bfloat16}:
+        torch_dtype = torch.float32
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path,
+        token=hf_token,
+        use_fast=use_fast,
+    )
+    if tokenizer.pad_token_id is None:
+        if tokenizer.eos_token is not None:
+            tokenizer.pad_token = tokenizer.eos_token
+        else:
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=torch_dtype if torch_dtype is not None else "auto",
+        device_map=device_map,
+        token=hf_token,
+    )
+    if model.get_input_embeddings().num_embeddings < len(tokenizer):
+        model.resize_token_embeddings(len(tokenizer))
+    if model.generation_config.pad_token_id is None:
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
+
+    if device_map is None:
+        model.to(device)
+    model.eval()
+    return tokenizer, model, device, device_map
+
+
+def load_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+    return rows
+
+
+def context_before_final_verb(sentence: str, final_verb: str) -> str:
+    text = sentence.strip()
+    if text.endswith("."):
+        text = text[:-1]
+    suffix = f" {final_verb.strip()}"
+    if text.endswith(suffix):
+        return text[: -len(suffix)] + " "
+    prefix, sep, _last = text.rpartition(" ")
+    if not sep:
+        raise ValueError(f"Cannot derive prefix from sentence: {sentence}")
+    return prefix + " "
+
+
+def normalize_prefix(prefix: str) -> str:
+    value = str(prefix)
+    if not value.endswith(" "):
+        value = value + " "
+    return value
+
+
+def strict_single_token_id(
+    tokenizer: AutoTokenizer,
+    text: str,
+    *,
+    row_idx: int,
+    field_name: str,
+) -> int:
+    token_ids = tokenizer.encode(text.strip(), add_special_tokens=False)
+    if len(token_ids) != 1:
+        raise ValueError(
+            f"Expected single-token verb for {field_name} at row {row_idx}, got token ids {token_ids} for '{text}'."
+        )
+    return int(token_ids[0])
+
+
+def tokenize_prefix(tokenizer: AutoTokenizer, prefix: str) -> list[int]:
+    token_ids = tokenizer.encode(prefix, add_special_tokens=False)
+    bos_id = tokenizer.bos_token_id
+    if bos_id is not None:
+        if not token_ids or token_ids[0] != bos_id:
+            token_ids = [bos_id] + token_ids
+    if not token_ids:
+        raise ValueError(f"Prefix tokenized to empty ids: {repr(prefix)}")
+    return token_ids
+
+
+def build_examples(
+    rows: list[dict[str, Any]],
+    tokenizer: AutoTokenizer,
+) -> list[dict[str, Any]]:
+    examples: list[dict[str, Any]] = []
+    for idx, row in enumerate(rows):
+        mv_base = str(row.get("MV_base", "")).strip()
+        mv_source = str(row.get("MV_source", "")).strip()
+        if not mv_base or not mv_source:
+            raise ValueError(f"Missing MV_base/MV_source in row {idx}")
+
+        base_prefix = row.get("base_prefix")
+        if base_prefix is None:
+            base_sentence = row.get("base_sentence")
+            if base_sentence is None:
+                raise ValueError(
+                    f"Row {idx} missing both base_prefix and base_sentence fields."
+                )
+            base_prefix = context_before_final_verb(str(base_sentence), mv_base)
+
+        source_prefix = row.get("source_prefix")
+        if source_prefix is None:
+            source_sentence = row.get("source_sentence")
+            if source_sentence is None:
+                raise ValueError(
+                    f"Row {idx} missing both source_prefix and source_sentence fields."
+                )
+            source_prefix = context_before_final_verb(str(source_sentence), mv_source)
+
+        base_prefix = normalize_prefix(str(base_prefix))
+        source_prefix = normalize_prefix(str(source_prefix))
+
+        id_base = strict_single_token_id(
+            tokenizer,
+            mv_base,
+            row_idx=idx,
+            field_name="MV_base",
+        )
+        id_source = strict_single_token_id(
+            tokenizer,
+            mv_source,
+            row_idx=idx,
+            field_name="MV_source",
+        )
+
+        examples.append(
+            {
+                "row_idx": idx,
+                "base_prefix": base_prefix,
+                "source_prefix": source_prefix,
+                "mv_base": mv_base,
+                "mv_source": mv_source,
+                "id_base": id_base,
+                "id_source": id_source,
+                "base_prefix_ids": tokenize_prefix(tokenizer, base_prefix),
+                "source_prefix_ids": tokenize_prefix(tokenizer, source_prefix),
+            }
+        )
+    return examples
+
+
+def split_examples(
+    examples: list[dict[str, Any]],
+    *,
+    train_size: int,
+    val_size: int,
+    test_size: int,
+    seed: int,
+):
+    required = train_size + val_size + test_size
+    if len(examples) < required:
+        raise ValueError(
+            f"Dataset too small: {len(examples)} rows, but {required} required for train/val/test."
+        )
+    shuffled = list(examples)
+    rng = random.Random(seed)
+    rng.shuffle(shuffled)
+    train_split = shuffled[:train_size]
+    val_split = shuffled[train_size : train_size + val_size]
+    test_split = shuffled[train_size + val_size : required]
+    return train_split, val_split, test_split
+
+
+def collate_examples(
+    examples: list[dict[str, Any]],
+    *,
+    pad_id: int,
+    intervene_direction: str,
+) -> dict[str, Any]:
+    main_ids_list: list[list[int]] = []
+    source_ids_list: list[list[int]] = []
+    target_ids: list[int] = []
+    wrong_ids: list[int] = []
+    target_words: list[str] = []
+    wrong_words: list[str] = []
+    main_prefixes: list[str] = []
+    source_prefixes: list[str] = []
+    row_indices: list[int] = []
+
+    for ex in examples:
+        if intervene_direction == "source_to_base":
+            main_ids = ex["base_prefix_ids"]
+            source_ids = ex["source_prefix_ids"]
+            target_id = ex["id_source"]
+            wrong_id = ex["id_base"]
+            target_word = ex["mv_source"]
+            wrong_word = ex["mv_base"]
+            main_prefix = ex["base_prefix"]
+            source_prefix = ex["source_prefix"]
+        elif intervene_direction == "base_to_source":
+            main_ids = ex["source_prefix_ids"]
+            source_ids = ex["base_prefix_ids"]
+            target_id = ex["id_base"]
+            wrong_id = ex["id_source"]
+            target_word = ex["mv_base"]
+            wrong_word = ex["mv_source"]
+            main_prefix = ex["source_prefix"]
+            source_prefix = ex["base_prefix"]
+        else:
+            raise ValueError(f"Unsupported intervene_direction: {intervene_direction}")
+
+        main_ids_list.append(main_ids)
+        source_ids_list.append(source_ids)
+        target_ids.append(target_id)
+        wrong_ids.append(wrong_id)
+        target_words.append(target_word)
+        wrong_words.append(wrong_word)
+        main_prefixes.append(main_prefix)
+        source_prefixes.append(source_prefix)
+        row_indices.append(int(ex["row_idx"]))
+
+    max_len = max(
+        max(len(ids) for ids in main_ids_list),
+        max(len(ids) for ids in source_ids_list),
+    )
+    batch_size = len(examples)
+
+    main_input_ids = torch.full((batch_size, max_len), pad_id, dtype=torch.long)
+    source_input_ids = torch.full((batch_size, max_len), pad_id, dtype=torch.long)
+    main_attention_mask = torch.zeros((batch_size, max_len), dtype=torch.long)
+    source_attention_mask = torch.zeros((batch_size, max_len), dtype=torch.long)
+    # Gemma-3 requires token_type_ids in train-mode forward; text-only inputs are all zeros.
+    main_token_type_ids = torch.zeros((batch_size, max_len), dtype=torch.long)
+    source_token_type_ids = torch.zeros((batch_size, max_len), dtype=torch.long)
+    main_last_positions: list[int] = []
+    source_last_positions: list[int] = []
+
+    for i, (main_ids, source_ids) in enumerate(zip(main_ids_list, source_ids_list)):
+        main_len = len(main_ids)
+        source_len = len(source_ids)
+        main_input_ids[i, :main_len] = torch.tensor(main_ids, dtype=torch.long)
+        source_input_ids[i, :source_len] = torch.tensor(source_ids, dtype=torch.long)
+        main_attention_mask[i, :main_len] = 1
+        source_attention_mask[i, :source_len] = 1
+        main_last_positions.append(main_len - 1)
+        source_last_positions.append(source_len - 1)
+
+    main_positions = [[pos] for pos in main_last_positions]
+    source_positions = [[pos] for pos in source_last_positions]
+
+    return {
+        "main_input_ids": main_input_ids,
+        "main_attention_mask": main_attention_mask,
+        "main_token_type_ids": main_token_type_ids,
+        "source_input_ids": source_input_ids,
+        "source_attention_mask": source_attention_mask,
+        "source_token_type_ids": source_token_type_ids,
+        "main_last_positions": torch.tensor(main_last_positions, dtype=torch.long),
+        "target_ids": torch.tensor(target_ids, dtype=torch.long),
+        "wrong_ids": torch.tensor(wrong_ids, dtype=torch.long),
+        "main_positions": main_positions,
+        "source_positions": source_positions,
+        "target_words": target_words,
+        "wrong_words": wrong_words,
+        "main_prefixes": main_prefixes,
+        "source_prefixes": source_prefixes,
+        "row_indices": row_indices,
+    }
+
+
+def move_batch_to_device(batch: dict[str, Any], device: torch.device) -> dict[str, Any]:
+    moved: dict[str, Any] = {}
+    for key, value in batch.items():
+        if torch.is_tensor(value):
+            moved[key] = value.to(device)
+        else:
+            moved[key] = value
+    return moved
+
+
+def forward_intervened_pair_logits(
+    intervenable: IntervenableModel,
+    batch: dict[str, Any],
+) -> torch.Tensor:
+    unit_locations = {
+        "sources->base": ([batch["source_positions"]], [batch["main_positions"]])
+    }
+    _, counterfactual_outputs = intervenable(
+        {
+            "input_ids": batch["main_input_ids"],
+            "attention_mask": batch["main_attention_mask"],
+            "token_type_ids": batch["main_token_type_ids"],
+        },
+        [
+            {
+                "input_ids": batch["source_input_ids"],
+                "attention_mask": batch["source_attention_mask"],
+                "token_type_ids": batch["source_token_type_ids"],
+            }
+        ],
+        unit_locations,
+    )
+
+    logits = counterfactual_outputs.logits
+    batch_indices = torch.arange(logits.shape[0], device=logits.device)
+    last_token_logits = logits[batch_indices, batch["main_last_positions"], :]
+    target_logits = torch.gather(
+        last_token_logits, dim=1, index=batch["target_ids"].unsqueeze(1)
+    ).squeeze(1)
+    wrong_logits = torch.gather(
+        last_token_logits, dim=1, index=batch["wrong_ids"].unsqueeze(1)
+    ).squeeze(1)
+    pair_logits = torch.stack([target_logits, wrong_logits], dim=1)
+    return pair_logits
+
+
+def compute_targeted_loss(
+    intervenable: IntervenableModel,
+    pair_logits: torch.Tensor,
+    boundary_loss_weight: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    labels = torch.zeros(pair_logits.shape[0], dtype=torch.long, device=pair_logits.device)
+    ce_loss = CrossEntropyLoss()(pair_logits, labels)
+    boundary_penalty = torch.zeros((), device=pair_logits.device)
+    for _, intervention in intervenable.interventions.items():
+        boundary_penalty = boundary_penalty + intervention.intervention_boundaries.sum()
+    total_loss = ce_loss + boundary_loss_weight * boundary_penalty
+    return total_loss, ce_loss, boundary_penalty
+
+
+def evaluate(
+    intervenable: IntervenableModel,
+    dataloader: DataLoader,
+    device: torch.device,
+) -> dict[str, float]:
+    total = 0
+    correct = 0
+    ties = 0
+    loss_sum = 0.0
+    margin_sum = 0.0
+
+    intervenable.model.eval()
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Eval", leave=False):
+            batch = move_batch_to_device(batch, device)
+            pair_logits = forward_intervened_pair_logits(intervenable, batch)
+            labels = torch.zeros(pair_logits.shape[0], dtype=torch.long, device=device)
+            ce_loss = CrossEntropyLoss()(pair_logits, labels)
+            margins = pair_logits[:, 0] - pair_logits[:, 1]
+            batch_correct = (margins > 0).sum().item()
+            batch_ties = (margins == 0).sum().item()
+
+            batch_size = pair_logits.shape[0]
+            total += batch_size
+            correct += batch_correct
+            ties += batch_ties
+            margin_sum += margins.sum().item()
+            loss_sum += ce_loss.item() * batch_size
+
+    accuracy = correct / total if total else 0.0
+    avg_loss = loss_sum / total if total else 0.0
+    avg_margin = margin_sum / total if total else 0.0
+    return {
+        "total": total,
+        "correct": correct,
+        "ties": ties,
+        "accuracy": accuracy,
+        "avg_target_minus_wrong_logit": avg_margin,
+        "avg_targeted_ce_loss": avg_loss,
+    }
+
+
+def build_sample_logs(
+    intervenable: IntervenableModel,
+    sample_examples: list[dict[str, Any]],
+    *,
+    pad_id: int,
+    intervene_direction: str,
+    device: torch.device,
+    header: str,
+    expected_count: int | None = None,
+) -> str:
+    if expected_count is not None and len(sample_examples) != expected_count:
+        raise ValueError(
+            f"Expected exactly {expected_count} samples for detailed logging, got {len(sample_examples)}."
+        )
+
+    lines = [header, ""]
+    intervenable.model.eval()
+    with torch.no_grad():
+        for idx, ex in enumerate(sample_examples, start=1):
+            batch = collate_examples(
+                [ex],
+                pad_id=pad_id,
+                intervene_direction=intervene_direction,
+            )
+            batch = move_batch_to_device(batch, device)
+            pair_logits = forward_intervened_pair_logits(intervenable, batch)
+            pair_probs = F.softmax(pair_logits[0], dim=-1)
+
+            target_logit = pair_logits[0, 0].item()
+            wrong_logit = pair_logits[0, 1].item()
+            target_prob = pair_probs[0].item()
+            wrong_prob = pair_probs[1].item()
+            is_correct = target_logit > wrong_logit
+
+            target_word = batch["target_words"][0]
+            wrong_word = batch["wrong_words"][0]
+            target_id = int(batch["target_ids"][0].item())
+            wrong_id = int(batch["wrong_ids"][0].item())
+
+            lines.extend(
+                [
+                    f"=== Sample {idx} ===",
+                    f"row_idx: {batch['row_indices'][0]}",
+                    f"main_prefix: {batch['main_prefixes'][0]}",
+                    f"source_prefix: {batch['source_prefixes'][0]}",
+                    f"target_word: {target_word} (id={target_id})",
+                    f"wrong_word: {wrong_word} (id={wrong_id})",
+                    f"raw_target_logit: {target_logit:.8f}",
+                    f"raw_wrong_logit: {wrong_logit:.8f}",
+                    f"renorm_target_prob: {target_prob:.8f}",
+                    f"renorm_wrong_prob: {wrong_prob:.8f}",
+                    f"correct: {is_correct}",
+                    "",
+                ]
+            )
+    return "\n".join(lines)
+
+
+def build_50_sample_logs(
+    intervenable: IntervenableModel,
+    sample_examples: list[dict[str, Any]],
+    *,
+    pad_id: int,
+    intervene_direction: str,
+    device: torch.device,
+    header: str,
+) -> str:
+    return build_sample_logs(
+        intervenable,
+        sample_examples,
+        pad_id=pad_id,
+        intervene_direction=intervene_direction,
+        device=device,
+        header=header,
+        expected_count=50,
+    )
+
+
+def build_epoch_tracking_text(
+    *,
+    intervene_direction: str,
+    baseline_test_metrics: dict[str, float],
+    epoch_tracking_history: list[dict[str, Any]],
+    sample_logs_text: str,
+    sample_count: int,
+) -> str:
+    lines: list[str] = [
+        "Epoch-wise test tracking",
+        f"Direction: {intervene_direction}",
+        f"Fixed sample_count: {sample_count}",
+        "",
+        (
+            "Baseline test metrics (before training): "
+            f"test_acc={baseline_test_metrics['accuracy']:.6f}, "
+            f"correct={baseline_test_metrics['correct']}, "
+            f"total={baseline_test_metrics['total']}, "
+            f"ties={baseline_test_metrics['ties']}"
+        ),
+        "",
+        "Per-epoch test accuracy:",
+    ]
+    if not epoch_tracking_history:
+        lines.append("- (no epochs completed yet)")
+    else:
+        for item in epoch_tracking_history:
+            lines.append(
+                (
+                    f"- epoch={item['epoch']}, "
+                    f"test_acc={item['test_accuracy']:.6f}, "
+                    f"correct={item['test_correct']}, "
+                    f"total={item['test_total']}, "
+                    f"ties={item['test_ties']}"
+                )
+            )
+    lines.extend(["", sample_logs_text])
+    return "\n".join(lines)
+
+
+def train(
+    intervenable: IntervenableModel,
+    train_dataloader: DataLoader,
+    val_dataloader: DataLoader,
+    training_cfg: dict[str, Any],
+    *,
+    device: torch.device,
+    test_dataloader: DataLoader | None = None,
+    epoch_end_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    epochs = int(training_cfg.get("epochs", 3))
+    gradient_accumulation_steps = int(training_cfg.get("gradient_accumulation_steps", 1))
+    lr_rotate = float(training_cfg.get("lr_rotate", 1.0e-3))
+    lr_boundary = float(training_cfg.get("lr_boundary", 1.0e-2))
+    warmup_ratio = float(training_cfg.get("warmup_ratio", 0.1))
+    temperature_start = float(training_cfg.get("temperature_start", 50.0))
+    temperature_end = float(training_cfg.get("temperature_end", 0.1))
+    boundary_loss_weight = float(training_cfg.get("boundary_loss_weight", 1.0))
+    log_every_steps = int(training_cfg.get("log_every_steps", 20))
+
+    total_train_steps = max(1, len(train_dataloader) * epochs)
+    warmup_steps = int(warmup_ratio * total_train_steps)
+
+    optimizer_params = []
+    for _, intervention in intervenable.interventions.items():
+        optimizer_params.append(
+            {"params": intervention.rotate_layer.parameters(), "lr": lr_rotate}
+        )
+        optimizer_params.append(
+            {"params": intervention.intervention_boundaries, "lr": lr_boundary}
+        )
+    optimizer = torch.optim.Adam(optimizer_params, lr=lr_rotate)
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=warmup_steps,
+        num_training_steps=total_train_steps,
+    )
+
+    temperature_schedule = torch.linspace(
+        temperature_start,
+        temperature_end,
+        total_train_steps,
+        device=device,
+    )
+    if device.type == "cuda":
+        temperature_schedule = temperature_schedule.to(torch.bfloat16)
+
+    intervenable.set_zero_grad()
+    intervenable.set_temperature(temperature_schedule[0])
+    intervenable.model.train()
+
+    history: list[dict[str, Any]] = []
+    global_step = 0
+
+    for epoch in trange(epochs, desc="Epoch"):
+        epoch_total = 0
+        epoch_correct = 0
+        epoch_loss_sum = 0.0
+
+        progress = tqdm(
+            train_dataloader,
+            desc=f"Train Epoch {epoch + 1}/{epochs}",
+            leave=True,
+        )
+        for step, batch in enumerate(progress):
+            schedule_idx = min(global_step, total_train_steps - 1)
+            intervenable.set_temperature(temperature_schedule[schedule_idx])
+
+            batch = move_batch_to_device(batch, device)
+            pair_logits = forward_intervened_pair_logits(intervenable, batch)
+            total_loss, ce_loss, boundary_penalty = compute_targeted_loss(
+                intervenable,
+                pair_logits,
+                boundary_loss_weight=boundary_loss_weight,
+            )
+
+            batch_size = pair_logits.shape[0]
+            margins = pair_logits[:, 0] - pair_logits[:, 1]
+            batch_correct = (margins > 0).sum().item()
+            epoch_total += batch_size
+            epoch_correct += batch_correct
+            epoch_loss_sum += total_loss.item() * batch_size
+
+            loss_for_backward = total_loss / max(1, gradient_accumulation_steps)
+            loss_for_backward.backward()
+
+            should_step = (
+                ((step + 1) % max(1, gradient_accumulation_steps) == 0)
+                or (step + 1 == len(train_dataloader))
+            )
+            if should_step:
+                optimizer.step()
+                scheduler.step()
+                intervenable.set_zero_grad()
+
+            if (step == 0) or (log_every_steps > 0 and (step + 1) % log_every_steps == 0):
+                batch_acc = batch_correct / batch_size if batch_size else 0.0
+                progress.set_postfix(
+                    loss=f"{total_loss.item():.4f}",
+                    ce=f"{ce_loss.item():.4f}",
+                    boundary=f"{boundary_penalty.item():.4f}",
+                    acc=f"{batch_acc:.4f}",
+                )
+
+            global_step += 1
+
+        train_accuracy = epoch_correct / epoch_total if epoch_total else 0.0
+        train_loss = epoch_loss_sum / epoch_total if epoch_total else 0.0
+        val_metrics = evaluate(intervenable, val_dataloader, device)
+        test_metrics = None
+        if test_dataloader is not None:
+            test_metrics = evaluate(intervenable, test_dataloader, device)
+
+        epoch_result = {
+            "epoch": epoch + 1,
+            "train_accuracy": train_accuracy,
+            "train_loss": train_loss,
+            "val_accuracy": val_metrics["accuracy"],
+            "val_targeted_ce_loss": val_metrics["avg_targeted_ce_loss"],
+            "val_avg_target_minus_wrong_logit": val_metrics[
+                "avg_target_minus_wrong_logit"
+            ],
+        }
+        if test_metrics is not None:
+            epoch_result["test_accuracy"] = test_metrics["accuracy"]
+            epoch_result["test_targeted_ce_loss"] = test_metrics["avg_targeted_ce_loss"]
+            epoch_result["test_avg_target_minus_wrong_logit"] = test_metrics[
+                "avg_target_minus_wrong_logit"
+            ]
+            epoch_result["test_correct"] = test_metrics["correct"]
+            epoch_result["test_total"] = test_metrics["total"]
+            epoch_result["test_ties"] = test_metrics["ties"]
+        history.append(epoch_result)
+
+        message = (
+            f"[epoch {epoch + 1}] train_acc={train_accuracy:.4f} "
+            f"train_loss={train_loss:.4f} "
+            f"val_acc={val_metrics['accuracy']:.4f} "
+            f"val_ce={val_metrics['avg_targeted_ce_loss']:.4f}"
+        )
+        if test_metrics is not None:
+            message += (
+                f" test_acc={test_metrics['accuracy']:.4f} "
+                f"test_ce={test_metrics['avg_targeted_ce_loss']:.4f}"
+            )
+        print(message)
+        if epoch_end_callback is not None:
+            epoch_end_callback(epoch_result)
+
+    return history
+
+
+def main() -> None:
+    args = parse_args()
+    config_path = Path(args.config).resolve()
+    config = load_yaml(config_path)
+    config_dir = config_path.parent
+
+    model_cfg = config.get("model", {})
+    dataset_cfg = config.get("dataset", {})
+    runtime_cfg = config.get("runtime", {})
+    intervention_cfg = config.get("intervention", {})
+    training_cfg = config.get("training", {})
+    output_cfg = config.get("output", {})
+
+    model_path = str(model_cfg.get("path", "")).strip()
+    if not model_path:
+        raise ValueError("model.path is required in config.")
+    model_name = str(model_cfg.get("name", model_path)).strip()
+
+    dataset_path = resolve_path(config_dir, str(dataset_cfg.get("path", "")))
+    if not dataset_path.exists():
+        raise ValueError(f"Dataset file does not exist: {dataset_path}")
+
+    intervene_direction = str(
+        intervention_cfg.get("intervene_direction", "source_to_base")
+    ).strip()
+    if intervene_direction not in {"source_to_base", "base_to_source"}:
+        raise ValueError(
+            "intervene_direction must be 'source_to_base' or 'base_to_source'."
+        )
+
+    split_seed = int(dataset_cfg.get("shuffle_seed", 42))
+    train_size = int(dataset_cfg.get("train_size", 15000))
+    val_size = int(dataset_cfg.get("val_size", 1000))
+    test_size = int(dataset_cfg.get("test_size", 2000))
+    train_seed = int(training_cfg.get("seed", 42))
+
+    set_seed(train_seed)
+    random.seed(train_seed)
+    torch.manual_seed(train_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(train_seed)
+
+    hf_token = os.environ.get("HUGGINGFACE_HUB_TOKEN")
+    tokenizer, model, runtime_device, device_map = load_model_and_tokenizer(
+        model_path,
+        runtime_cfg,
+        hf_token,
+    )
+    model_device = next(model.parameters()).device
+
+    rows = load_jsonl(dataset_path)
+    examples = build_examples(rows, tokenizer)
+    train_examples, val_examples, test_examples = split_examples(
+        examples,
+        train_size=train_size,
+        val_size=val_size,
+        test_size=test_size,
+        seed=split_seed,
+    )
+
+    print(
+        f"[data] total={len(examples)} train={len(train_examples)} "
+        f"val={len(val_examples)} test={len(test_examples)}"
+    )
+    print(f"[setup] intervene_direction={intervene_direction}")
+
+    pad_id = model.generation_config.pad_token_id
+    if pad_id is None:
+        pad_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else 0
+
+    collate_fn = lambda batch: collate_examples(
+        batch,
+        pad_id=pad_id,
+        intervene_direction=intervene_direction,
+    )
+    train_dataloader = DataLoader(
+        train_examples,
+        batch_size=int(training_cfg.get("batch_size", 16)),
+        shuffle=True,
+        collate_fn=collate_fn,
+    )
+    val_dataloader = DataLoader(
+        val_examples,
+        batch_size=int(training_cfg.get("eval_batch_size", 16)),
+        shuffle=False,
+        collate_fn=collate_fn,
+    )
+    test_dataloader = DataLoader(
+        test_examples,
+        batch_size=int(training_cfg.get("eval_batch_size", 16)),
+        shuffle=False,
+        collate_fn=collate_fn,
+    )
+
+    raw_layer_value = intervention_cfg.get("layer", intervention_cfg.get("layers", 15))
+    if isinstance(raw_layer_value, (list, tuple)):
+        layers = [int(layer_item) for layer_item in raw_layer_value]
+    else:
+        layers = [int(raw_layer_value)]
+    if not layers:
+        raise ValueError("intervention.layer must include at least one layer.")
+    component = str(intervention_cfg.get("component", "block_output"))
+    unit = str(intervention_cfg.get("unit", "pos"))
+    print(f"[setup] layers={layers}")
+
+    output_root = resolve_path(config_dir, str(output_cfg.get("root_dir", "results")))
+    model_dir_name = sanitize_model_dir_name(model_name, model_path)
+    result_dir = output_root / model_dir_name / intervene_direction
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    epoch_tracking_cfg = output_cfg.get("epoch_tracking", {})
+    epoch_tracking_enabled = bool(epoch_tracking_cfg.get("enabled", True))
+    epoch_tracking_sample_count = int(epoch_tracking_cfg.get("sample_count", 10))
+    epoch_tracking_file_name = str(
+        epoch_tracking_cfg.get("file_name", "epoch_test_tracking.txt")
+    )
+    if epoch_tracking_sample_count <= 0:
+        raise ValueError("output.epoch_tracking.sample_count must be > 0")
+    if epoch_tracking_sample_count > len(test_examples):
+        raise ValueError(
+            "output.epoch_tracking.sample_count cannot exceed test set size "
+            f"({len(test_examples)})."
+        )
+
+    sample_rng = random.Random(split_seed + 999)
+    sample_indices = sample_rng.sample(range(len(test_examples)), 50)
+    sample_examples = [test_examples[i] for i in sample_indices]
+    epoch_tracking_rng = random.Random(split_seed + 2026)
+    epoch_tracking_indices = epoch_tracking_rng.sample(
+        range(len(test_examples)), epoch_tracking_sample_count
+    )
+    epoch_tracking_examples = [test_examples[i] for i in epoch_tracking_indices]
+
+    all_layer_results: list[dict[str, Any]] = []
+    for layer in layers:
+        set_seed(train_seed)
+        random.seed(train_seed)
+        torch.manual_seed(train_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(train_seed)
+
+        layer_result_dir = result_dir / f"layer_{layer}"
+        layer_result_dir.mkdir(parents=True, exist_ok=True)
+        epoch_tracking_path = layer_result_dir / epoch_tracking_file_name
+
+        intervenable_config = IntervenableConfig(
+            model_type=type(model),
+            representations=[
+                RepresentationConfig(
+                    layer=layer,
+                    component=component,
+                    unit=unit,
+                    max_number_of_units=1,
+                )
+            ],
+            intervention_types=BoundlessRotatedSpaceIntervention,
+        )
+        intervenable = IntervenableModel(intervenable_config, model)
+        intervenable.disable_model_gradients()
+
+        if device_map is None:
+            intervenable.set_device(runtime_device)
+            training_device = runtime_device
+        else:
+            intervenable.set_device(model_device, set_model=False)
+            training_device = model_device
+
+        print(
+            f"[model][layer {layer}] base model params: {count_parameters(intervenable.model)}"
+        )
+        print(
+            f"[model][layer {layer}] intervention params: {intervenable.count_parameters()}"
+        )
+
+        before_header = (
+            "Detailed 50-sample logs BEFORE training\n"
+            f"Direction: {intervene_direction}\n"
+            f"Layer: {layer}\n"
+            "Logit index 0 = target correct verb, index 1 = wrong verb"
+        )
+        before_text = build_50_sample_logs(
+            intervenable,
+            sample_examples,
+            pad_id=pad_id,
+            intervene_direction=intervene_direction,
+            device=training_device,
+            header=before_header,
+        )
+        before_path = layer_result_dir / str(
+            output_cfg.get("before_training_log", "50_samples_before_training.txt")
+        )
+        before_path.write_text(before_text, encoding="utf-8")
+        print(before_text)
+
+        baseline_val_metrics = evaluate(intervenable, val_dataloader, training_device)
+        baseline_test_metrics = evaluate(intervenable, test_dataloader, training_device)
+        print(
+            f"[baseline][layer {layer}] val_acc={baseline_val_metrics['accuracy']:.4f} "
+            f"test_acc={baseline_test_metrics['accuracy']:.4f}"
+        )
+
+        epoch_tracking_history: list[dict[str, Any]] = []
+        if epoch_tracking_enabled:
+            baseline_tracking_header = (
+                "Fixed sample logs for epoch-wise test tracking (BEFORE training)\n"
+                f"Direction: {intervene_direction}\n"
+                f"Layer: {layer}\n"
+                "Logit index 0 = target correct verb, index 1 = wrong verb"
+            )
+            baseline_tracking_samples = build_sample_logs(
+                intervenable,
+                epoch_tracking_examples,
+                pad_id=pad_id,
+                intervene_direction=intervene_direction,
+                device=training_device,
+                header=baseline_tracking_header,
+                expected_count=epoch_tracking_sample_count,
+            )
+            tracking_text = build_epoch_tracking_text(
+                intervene_direction=intervene_direction,
+                baseline_test_metrics=baseline_test_metrics,
+                epoch_tracking_history=epoch_tracking_history,
+                sample_logs_text=baseline_tracking_samples,
+                sample_count=epoch_tracking_sample_count,
+            )
+            epoch_tracking_path.write_text(tracking_text, encoding="utf-8")
+            print(f"[saved] {epoch_tracking_path} (before training)")
+
+        def on_epoch_end(epoch_result: dict[str, Any]) -> None:
+            if not epoch_tracking_enabled:
+                return
+            epoch_tracking_history.append(
+                {
+                    "epoch": int(epoch_result["epoch"]),
+                    "test_accuracy": float(epoch_result["test_accuracy"]),
+                    "test_correct": int(epoch_result["test_correct"]),
+                    "test_total": int(epoch_result["test_total"]),
+                    "test_ties": int(epoch_result["test_ties"]),
+                }
+            )
+            epoch_header = (
+                "Fixed sample logs for epoch-wise test tracking "
+                f"(AFTER epoch {epoch_result['epoch']})\n"
+                f"Direction: {intervene_direction}\n"
+                f"Layer: {layer}\n"
+                "Logit index 0 = target correct verb, index 1 = wrong verb"
+            )
+            epoch_samples = build_sample_logs(
+                intervenable,
+                epoch_tracking_examples,
+                pad_id=pad_id,
+                intervene_direction=intervene_direction,
+                device=training_device,
+                header=epoch_header,
+                expected_count=epoch_tracking_sample_count,
+            )
+            tracking_text = build_epoch_tracking_text(
+                intervene_direction=intervene_direction,
+                baseline_test_metrics=baseline_test_metrics,
+                epoch_tracking_history=epoch_tracking_history,
+                sample_logs_text=epoch_samples,
+                sample_count=epoch_tracking_sample_count,
+            )
+            epoch_tracking_path.write_text(tracking_text, encoding="utf-8")
+            print(
+                f"[saved] {epoch_tracking_path} (after epoch {epoch_result['epoch']})"
+            )
+
+        history = train(
+            intervenable,
+            train_dataloader,
+            val_dataloader,
+            training_cfg,
+            device=training_device,
+            test_dataloader=test_dataloader,
+            epoch_end_callback=on_epoch_end,
+        )
+
+        final_val_metrics = evaluate(intervenable, val_dataloader, training_device)
+        final_test_metrics = evaluate(intervenable, test_dataloader, training_device)
+        print(
+            f"[final][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
+            f"test_acc={final_test_metrics['accuracy']:.4f}"
+        )
+
+        after_header = (
+            "Detailed 50-sample logs AFTER training\n"
+            f"Direction: {intervene_direction}\n"
+            f"Layer: {layer}\n"
+            "Logit index 0 = target correct verb, index 1 = wrong verb"
+        )
+        after_text = build_50_sample_logs(
+            intervenable,
+            sample_examples,
+            pad_id=pad_id,
+            intervene_direction=intervene_direction,
+            device=training_device,
+            header=after_header,
+        )
+        after_path = layer_result_dir / str(
+            output_cfg.get("after_training_log", "50_samples_after_training.txt")
+        )
+        after_path.write_text(after_text, encoding="utf-8")
+        print(after_text)
+
+        result_payload = {
+            "model": {
+                "name": model_name,
+                "path": model_path,
+                "output_dir_name": model_dir_name,
+            },
+            "dataset": {
+                "path": str(dataset_path),
+                "total_rows": len(examples),
+                "train_size": len(train_examples),
+                "val_size": len(val_examples),
+                "test_size": len(test_examples),
+                "shuffle_seed": split_seed,
+                "sample_row_indices_for_50_logs": [
+                    sample_examples[i]["row_idx"] for i in range(50)
+                ],
+                "sample_row_indices_for_epoch_tracking_logs": [
+                    epoch_tracking_examples[i]["row_idx"]
+                    for i in range(epoch_tracking_sample_count)
+                ],
+            },
+            "intervention": {
+                "direction": intervene_direction,
+                "layer": layer,
+                "component": component,
+                "unit": unit,
+                "position": "last_token_of_prefix",
+            },
+            "training": {
+                "seed": train_seed,
+                "epochs": int(training_cfg.get("epochs", 3)),
+                "batch_size": int(training_cfg.get("batch_size", 16)),
+                "eval_batch_size": int(training_cfg.get("eval_batch_size", 16)),
+                "gradient_accumulation_steps": int(
+                    training_cfg.get("gradient_accumulation_steps", 1)
+                ),
+                "lr_rotate": float(training_cfg.get("lr_rotate", 1.0e-3)),
+                "lr_boundary": float(training_cfg.get("lr_boundary", 1.0e-2)),
+                "warmup_ratio": float(training_cfg.get("warmup_ratio", 0.1)),
+                "temperature_start": float(
+                    training_cfg.get("temperature_start", 50.0)
+                ),
+                "temperature_end": float(training_cfg.get("temperature_end", 0.1)),
+                "boundary_loss_weight": float(
+                    training_cfg.get("boundary_loss_weight", 1.0)
+                ),
+                "history": history,
+            },
+            "baseline": {
+                "val": baseline_val_metrics,
+                "test": baseline_test_metrics,
+            },
+            "final": {
+                "val": final_val_metrics,
+                "test": final_test_metrics,
+            },
+            "artifacts": {
+                "before_training_log": str(before_path),
+                "after_training_log": str(after_path),
+                "epoch_tracking_log": (
+                    str(epoch_tracking_path) if epoch_tracking_enabled else None
+                ),
+            },
+        }
+        result_path = layer_result_dir / str(output_cfg.get("result_file", "result.json"))
+        with result_path.open("w", encoding="utf-8") as handle:
+            json.dump(result_payload, handle, indent=2)
+        print(f"[saved] {result_path}")
+
+        all_layer_results.append(
+            {
+                "layer": layer,
+                "result_file": str(result_path),
+                "final_test_accuracy": final_test_metrics["accuracy"],
+                "final_val_accuracy": final_val_metrics["accuracy"],
+            }
+        )
+
+    summary_path = result_dir / "all_layers_summary.json"
+    with summary_path.open("w", encoding="utf-8") as handle:
+        json.dump({"layers": all_layer_results}, handle, indent=2)
+    print(f"[saved] {summary_path}")
+
+
+if __name__ == "__main__":
+    main()

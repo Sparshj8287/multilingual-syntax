@@ -341,7 +341,12 @@ def main() -> None:
     input_root = resolve_path(config_dir, eval_cfg["input_root"])
     output_root = resolve_path(config_dir, eval_cfg.get("output_root", "results"))
     dataset_name = eval_cfg.get("dataset_name", input_root.name)
-    variations = eval_cfg.get("input_variations", ["linear", "bow", "maximal"])
+
+
+    if dataset_name == "simple_agreement":
+        variations = None
+    else:
+        variations = eval_cfg.get("input_variations", ["linear", "bow", "maximal"])
     input_glob = eval_cfg.get("input_glob", "*.jsonl")
     sample_logs_per_file = int(eval_cfg.get("sample_logs_per_file", 50))
     seed = int(eval_cfg.get("random_seed", 13))
@@ -350,18 +355,25 @@ def main() -> None:
     rng = random.Random(seed)
 
     jsonl_paths: list[Path] = []
-    for variation in variations:
-        variation_dir = input_root / variation
-        if not variation_dir.exists():
-            print(f"Skipping missing variation directory: {variation_dir}")
-            continue
-        jsonl_paths.extend(sorted(variation_dir.glob(input_glob)))
+
+    if variations is None:
+        jsonl_paths.extend(sorted(input_root.glob(input_glob)))
+    else:
+        for variation in variations:
+            variation_dir = input_root / variation
+            if not variation_dir.exists():
+                print(f"Skipping missing variation directory: {variation_dir}")
+                continue
+            jsonl_paths.extend(sorted(variation_dir.glob(input_glob)))
 
     if not jsonl_paths:
         raise ValueError(f"No JSONL files found under {input_root}")
 
+
+
     jsonl_counts = {path: count_jsonl_entries(path) for path in jsonl_paths}
     total_examples = sum(jsonl_counts.values()) * len(model_cfgs)
+
 
     device_map = resolve_device_map(
         inf_cfg.get("device_map", "auto"), inf_cfg.get("cuda_device")
@@ -395,6 +407,7 @@ def main() -> None:
                 continue
 
             variation = jsonl_path.parent.name
+
             desc = f"{model_name}:{variation}/{jsonl_path.stem}"
             iterator = maybe_tqdm(
                 enumerate(rows),
@@ -481,7 +494,10 @@ def main() -> None:
                     overall_bar.update(1)
 
             rel_variation = jsonl_path.parent.name
-            output_dir = output_root / model_name / dataset_name / rel_variation
+            if dataset_name == "simple_agreement":
+                output_dir = output_root / model_name / dataset_name
+            else:
+                output_dir = output_root / model_name / dataset_name / rel_variation
             output_path = output_dir / f"{jsonl_path.stem}.txt"
             sample_lines = build_sample_lines(sampler.samples)
             write_results_file(

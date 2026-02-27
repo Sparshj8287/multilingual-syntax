@@ -21,7 +21,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         default=str(script_dir / "data" / "simple_agreement"),
-        help="Output root for converted files (default: data/simple_agreement).",
+        help="Output directory for merged file (default: data/simple_agreement).",
+    )
+    parser.add_argument(
+        "--output-file",
+        default="simple_agreement_merged.jsonl",
+        help="Merged output file name (default: simple_agreement_merged.jsonl).",
     )
     return parser.parse_args()
 
@@ -45,7 +50,7 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def to_simple_sentence(subject: str, verb: str) -> str:
-    return f"The {subject.strip()} {verb.strip()}."
+    return f"The {subject.strip()} {verb.strip()}"
 
 
 def transform_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -70,6 +75,8 @@ def transform_row(row: dict[str, Any]) -> dict[str, Any]:
 
     # Requested: remove NUA in simple-agreement output.
     new_row.pop("NUA", None)
+    new_row.pop("base_attractor_numbers", None)
+    new_row.pop("source_attractor_numbers", None)
     return new_row
 
 
@@ -91,6 +98,7 @@ def main() -> None:
     args = parse_args()
     input_root = Path(args.input_root).resolve()
     output_root = Path(args.output_root).resolve()
+    output_path = output_root / args.output_file
 
     if not input_root.exists():
         raise ValueError(f"Input root does not exist: {input_root}")
@@ -106,6 +114,9 @@ def main() -> None:
     if not dataset_dirs:
         raise ValueError(f"No dataset directories found under: {input_root}")
 
+    merged_rows: list[dict[str, Any]] = []
+    total_input_rows = 0
+
     for dataset in dataset_dirs:
         dataset_dir = input_root / dataset
         jsonl_files = sorted(dataset_dir.glob("*.jsonl"))
@@ -117,17 +128,19 @@ def main() -> None:
         for jsonl_path in jsonl_files:
             rows = load_jsonl(jsonl_path)
             transformed = [transform_row(row) for row in rows]
-            deduped, dup_count = deduplicate_rows(transformed)
-
+            total_input_rows += len(rows)
+            merged_rows.extend(transformed)
             rel_path = jsonl_path.relative_to(input_root)
-            out_path = output_root / rel_path
-            write_jsonl(out_path, deduped)
+            print(f"{rel_path}: input={len(rows)}, merged_total={len(merged_rows)}")
 
-            print(
-                f"{rel_path}: input={len(rows)}, removed_duplicates={dup_count}, output={len(deduped)}"
-            )
-
-    print(f"\nSaved simple-agreement files to: {output_root}")
+    unique_rows, dup_count = deduplicate_rows(merged_rows)
+    write_jsonl(output_path, unique_rows)
+    print(
+        f"\nSaved merged simple-agreement file to: {output_path}\n"
+        f"Total input rows: {total_input_rows}\n"
+        f"Removed duplicate rows: {dup_count}\n"
+        f"Total output rows (deduped): {len(unique_rows)}"
+    )
 
 
 if __name__ == "__main__":

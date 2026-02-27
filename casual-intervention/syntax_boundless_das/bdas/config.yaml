@@ -1,0 +1,49 @@
+model:
+  name: gemma-3-12b-pt
+  path: google/gemma-3-12b-pt
+
+dataset:
+  path: ../data/data_generators/templates/data/simple_agreement/simple_agreement_merged.jsonl
+  train_size: 15000
+  val_size: 1000
+  test_size: 2000
+  shuffle_seed: 42
+
+runtime:
+  device: cuda
+  device_map: auto
+  torch_dtype: bfloat16
+  use_fast_tokenizer: true
+
+intervention:
+  # Single layer:
+  # layer: 15
+  # Multiple layers in one run:
+  layer: [0,5,10,15,20,25,30,35,40,45]
+  component: block_output
+  unit: pos
+  intervene_direction: source_to_base  # source_to_base | base_to_source
+
+training:
+  seed: 42
+  batch_size: 768
+  eval_batch_size: 768
+  epochs: 3
+  gradient_accumulation_steps: 1
+  lr_rotate: 1.0e-3
+  lr_boundary: 1.0e-2
+  warmup_ratio: 0.1
+  temperature_start: 50.0
+  temperature_end: 0.1
+  boundary_loss_weight: 1.0
+  log_every_steps: 20
+
+output:
+  root_dir: results
+  before_training_log: 50_samples_before_training.txt
+  after_training_log: 50_samples_after_training.txt
+  epoch_tracking:
+    enabled: true
+    sample_count: 10
+    file_name: epoch_test_tracking.txt
+  result_file: result.json
