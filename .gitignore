@@ -16,6 +16,7 @@ mink-plus-plus/
 plots/ 
 results/
 observations/
+simple_agreement/
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo
