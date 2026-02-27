@@ -51,6 +51,8 @@ def main() -> None:
     prealign_dataloader = DataLoader(prealign_dataset, batch_size=8)
 
 
+
+
     total_count = 0
     correct_count = 0
     with torch.no_grad():
@@ -104,6 +106,10 @@ def main() -> None:
         raw_data[2][9000:],
         raw_data[3][9000:],
     )
+
+
+    print(raw_train[3])
+    breakpoint()
     train_dataset = Dataset.from_dict(
         {
             "input_ids": raw_train[0],

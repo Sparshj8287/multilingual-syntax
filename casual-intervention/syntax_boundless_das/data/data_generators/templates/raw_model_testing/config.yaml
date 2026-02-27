@@ -1,0 +1,28 @@
+evaluation:
+  input_root: ../data/obj_rel_across_anim
+  output_root: results
+  dataset_name: obj_rel_across_anim
+  input_variations:
+    - linear
+    - bow
+    - maximal
+  input_glob: "*.jsonl"
+  sample_logs_per_file: 50
+  random_seed: 13
+  show_progress_bar: true
+
+inference:
+  torch_dtype: bfloat16
+  device_map: auto
+  use_fast_tokenizer: true
+  # cuda_device: 0
+
+models:
+  - name: gemma-3-12b-pt
+    checkpoint: google/gemma-3-12b-pt
+  - name: llama-3.1-8b
+    checkpoint: /home/models/Llama-3.1-8B
+  - name: qwen-3-8b
+    checkpoint: Qwen/Qwen3-8B-Base
+  - name: olmo-3-7b
+    checkpoint: allenai/Olmo-3-1025-7B
