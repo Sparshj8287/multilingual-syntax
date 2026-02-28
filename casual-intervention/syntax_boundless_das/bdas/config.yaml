@@ -1,9 +1,9 @@
 model:
-  name: gemma-3-12b-pt
-  path: google/gemma-3-12b-pt
+  name: qwen-3-8b
+  path: Qwen/Qwen3-8B-Base
 
 dataset:
-  path: ../data/data_generators/templates/data/simple_agreement/simple_agreement_merged.jsonl
+  path: ../data/data_generators/templates/data/obj_rel_across_anim/maximal/obj_rel_across_anim_pairs_maximal_1.jsonl
   train_size: 15000
   val_size: 1000
   test_size: 2000
@@ -16,18 +16,15 @@ runtime:
   use_fast_tokenizer: true
 
 intervention:
-  # Single layer:
-  # layer: 15
-  # Multiple layers in one run:
-  layer: [0,5,10,15,20,25,30,35,40,45]
+
+  layer: [0,5,10,15,20,25,30,35]
   component: block_output
   unit: pos
-  intervene_direction: source_to_base  # source_to_base | base_to_source
-
+  intervene_direction: source_to_base  
 training:
   seed: 42
-  batch_size: 768
-  eval_batch_size: 768
+  batch_size: 512
+  eval_batch_size: 512
   epochs: 3
   gradient_accumulation_steps: 1
   lr_rotate: 1.0e-3
@@ -43,7 +40,7 @@ output:
   before_training_log: 50_samples_before_training.txt
   after_training_log: 50_samples_after_training.txt
   epoch_tracking:
-    enabled: true
+    enabled: false
     sample_count: 10
     file_name: epoch_test_tracking.txt
   result_file: result.json

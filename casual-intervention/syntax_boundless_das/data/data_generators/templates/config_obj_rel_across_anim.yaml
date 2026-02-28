@@ -4,7 +4,7 @@ generation:
   # Required
 
   num_attractors: [1, 2, 3, 4, 5, 6]
-  num_pairs: 2000
+  num_pairs: 20000
 
   # Attractor-number variation for the Base sentence (MS/MV singular):
   # - linear: first N-1 singular, last plural
