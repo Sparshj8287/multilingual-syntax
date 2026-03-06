@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import csv
 import json
 import os
 import random
@@ -332,26 +331,6 @@ def main():
     split = out_cfg["split"]
     data_root = resolve_path(config_dir, out_cfg.get("data_dir", "data"))
 
-    fieldnames = [
-        "pair_id",
-        "num_attractors",
-        "variation_type",
-        "base_attractor_numbers",
-        "source_attractor_numbers",
-        "main_subject_lemma",
-        "main_subject_plural",
-        "main_verb_sg",
-        "main_verb_pl",
-        "c_words",
-        "es_lemmas",
-        "es_plurals",
-        "ev_sg",
-        "ev_pl",
-        "sentence_singular",
-        "sentence_plural",
-        "category",
-    ]
-
     for variation_type in variation_values:
         for num_attractors in num_attractor_values:
             if "anim" in mode_values and num_attractors > available_es_count - 1:
@@ -372,13 +351,6 @@ def main():
             )
             source_attractor_numbers = invert_attractor_numbers(base_attractor_numbers)
 
-            csv_dir = resolve_path(config_dir, os.path.join(paradigm_root, split, variation_type))
-            os.makedirs(csv_dir, exist_ok=True)
-            out_file = os.path.join(
-                csv_dir,
-                f"obj_rel_across_anim_pairs_{variation_type}_{num_attractors}.csv",
-            )
-
             jsonl_dir = os.path.join(data_root, paradigm_root, split, variation_type)
             os.makedirs(jsonl_dir, exist_ok=True)
             jsonl_file = os.path.join(
@@ -389,13 +361,7 @@ def main():
             mode_targets = build_mode_targets(num_pairs, mode_values)
             generated = 0
             pair_id = 1
-            with (
-                open(out_file, "w", encoding="utf-8", newline="") as csvfile,
-                open(jsonl_file, "w", encoding="utf-8") as jsonl_out,
-            ):
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-
+            with open(jsonl_file, "w", encoding="utf-8") as jsonl_out:
                 for mode in mode_values:
                     mode_target = mode_targets.get(mode, 0)
                     if mode_target <= 0:
@@ -460,28 +426,9 @@ def main():
                             sentence_plural = build_sentence(
                                 d_word, ms_plural, blocks_plural, mv["pl"]
                             )
-
-                            row = {
-                                "pair_id": pair_id,
-                                "num_attractors": num_attractors,
-                                "variation_type": variation_type,
-                                "base_attractor_numbers": "|".join(base_attractor_numbers),
-                                "source_attractor_numbers": "|".join(source_attractor_numbers),
-                                "main_subject_lemma": ms_lemma,
-                                "main_subject_plural": ms_plural,
-                                "main_verb_sg": mv["sg"],
-                                "main_verb_pl": mv["pl"],
-                                "c_words": "|".join(c_samples),
-                                "es_lemmas": "|".join([e["lemma"] for e in es_samples]),
-                                "es_plurals": "|".join([e["plural"] for e in es_samples]),
-                                "ev_sg": "|".join([e["sg"] for e in ev_samples]),
-                                "ev_pl": "|".join([e["pl"] for e in ev_samples]),
-                                "sentence_singular": sentence_singular,
-                                "sentence_plural": sentence_plural,
-                                "category": mode_spec["category"],
-                            }
-                            writer.writerow(row)
                             jsonl_row = {
+                                # "pair_id": pair_id,
+                                # "variation_type": variation_type,
                                 "base_sentence": sentence_singular,
                                 "source_sentence": sentence_plural,
                                 "NUA": num_attractors,
@@ -489,8 +436,8 @@ def main():
                                 "MV_base": mv["sg"],
                                 "MS_source": ms_plural,
                                 "MV_source": mv["pl"],
-                                "base_attractor_numbers": base_attractor_numbers,
-                                "source_attractor_numbers": source_attractor_numbers,
+                                # "base_attractor_numbers": base_attractor_numbers,
+                                # "source_attractor_numbers": source_attractor_numbers,
                                 "category": mode_spec["category"],
                             }
                             jsonl_out.write(
@@ -512,7 +459,6 @@ def main():
                                     f"variation={variation_type}, num_attractors={num_attractors}."
                                 )
 
-            print(f"Wrote {generated} pairs to {out_file}")
             print(f"Wrote {generated} pairs to {jsonl_file}")
 
 

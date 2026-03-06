@@ -4,7 +4,7 @@ generation:
   # Required
 
   num_attractors: [1, 2, 3, 4, 5, 6]
-  num_pairs: 20000
+  num_pairs: 3000
 
   # Attractor-number variation for the Base sentence (MS/MV singular):
   # - linear: first N-1 singular, last plural
@@ -36,15 +36,15 @@ lexicon:
     - the
 
 paths:
-  nouns: ../../eng/raw_data_cleaned/noun/gemini_nouns_train.jsonl
-  verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs_train.jsonl
-  filtered_verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs_mv_train.jsonl
+  nouns: ../../eng/raw_data_cleaned/noun/gemini_nouns_test.jsonl
+  verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs_test.jsonl
+  filtered_verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs_mv_test.jsonl
 
 output:
   # Script creates variation subfolders automatically under this root.
   paradigm: obj_rel_across_anim
   data_dir: data
-  split: train
+  split: test
 
 filtering_without_ac:
   input_root: data/obj_rel_across_anim
