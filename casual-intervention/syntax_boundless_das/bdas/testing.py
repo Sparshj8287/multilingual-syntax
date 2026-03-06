@@ -13,7 +13,7 @@ import yaml
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
-from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, AutoConfig
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CASUAL_INTERVENTION_ROOT = SCRIPT_DIR.parent.parent
@@ -131,11 +131,13 @@ def load_model_and_tokenizer(
         else:
             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch_dtype if torch_dtype is not None else "auto",
-        device_map=device_map,
-        token=hf_token,
+    config = AutoConfig.from_pretrained(model_path, token=hf_token)
+
+    
+
+    model = AutoModelForCausalLM.from_config(
+        config,
+        torch_dtype=torch_dtype if torch_dtype is not None else "auto"
     )
     if model.get_input_embeddings().num_embeddings < len(tokenizer):
         model.resize_token_embeddings(len(tokenizer))
@@ -199,7 +201,6 @@ def strict_single_token_id(
 def tokenize_prefix(tokenizer: AutoTokenizer, prefix: str) -> list[int]:
     token_ids = tokenizer.encode(prefix, add_special_tokens=False)
     bos_id = tokenizer.bos_token_id
-
     if bos_id is not None:
         if not token_ids or token_ids[0] != bos_id:
             token_ids = [bos_id] + token_ids
@@ -240,8 +241,6 @@ def build_examples(
         base_prefix = normalize_prefix(str(base_prefix))
         source_prefix = normalize_prefix(str(source_prefix))
 
-
-
         id_base = strict_single_token_id(
             tokenizer,
             mv_base,
@@ -254,9 +253,6 @@ def build_examples(
             row_idx=idx,
             field_name="MV_source",
         )
-
-
-
 
         examples.append(
             {
@@ -872,7 +868,17 @@ def main() -> None:
 
     output_root = resolve_path(config_dir, str(output_cfg.get("root_dir", "results")))
     model_dir_name = sanitize_model_dir_name(model_name, model_path)
-    result_dir = output_root / model_dir_name / intervene_direction
+
+    dataset_path_str = str(dataset_path)
+    dataset_dir_name = dataset_path_str.split("/")[-3]
+
+    dataset_subset_dir_name = dataset_path_str.split("/")[-2]
+
+    if dataset_dir_name == "simple_agreement":
+        result_dir = output_root / model_dir_name / dataset_subset_dir_name / intervene_direction
+    else:
+        result_dir = output_root / model_dir_name / dataset_dir_name / dataset_subset_dir_name / intervene_direction
+
     result_dir.mkdir(parents=True, exist_ok=True)
 
     epoch_tracking_cfg = output_cfg.get("epoch_tracking", {})
@@ -929,7 +935,7 @@ def main() -> None:
             intervenable.set_device(runtime_device)
             training_device = runtime_device
         else:
-            intervenable.set_device(model_device, set_model=False)
+            intervenable.set_device(model_device, set_m@odel=False)
             training_device = model_device
 
         print(

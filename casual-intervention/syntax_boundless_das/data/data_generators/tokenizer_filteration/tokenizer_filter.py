@@ -4,10 +4,10 @@ from typing import List, Dict
 from transformers import AutoTokenizer
 
 MODELS_TO_USE = {
-    "gemma-3-12b-pt" : "google/gemma-3-12b-pt",
-    "llama-3.1-8b" : "/home/models/Llama-3.1-8B",
+    # "gemma-3-12b-pt" : "google/gemma-3-12b-pt",
+    # "llama-3.1-8b" : "/home/models/Llama-3.1-8B",
     "qwen-3-8b" : "Qwen/Qwen3-8B-Base",
-    "olmo-3-7b" : "allenai/Olmo-3-1025-7B"
+    # "olmo-3-7b" : "allenai/Olmo-3-1025-7B"
 }
 
 VERB_FILE_PATH = "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/data/eng/raw_data_cleaned/verb/gemini_verbs.jsonl"
@@ -40,11 +40,14 @@ def filter_verbs(verbs: List[Dict], tokenizer: AutoTokenizer) -> List[Dict]:
 def main():
     verbs = load_verb_data(VERB_FILE_PATH)
     temp_verbs = verbs.copy()
+    print(f"Loaded {len(temp_verbs)} verbs")
     for model_name in MODELS_TO_USE:
-
 
         tokenizer = load_tokenizer(model_name)
         temp_verbs = filter_verbs(temp_verbs, tokenizer)
+        print(f"Filtered {len(temp_verbs)} verbs for {model_name}")
+
+    print(f"Filtered {len(temp_verbs)} verbs for all models")
 
     with open(f"/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/data/eng/raw_data_cleaned/verb/filtered_verbs.jsonl", "w") as f:
         for verb in temp_verbs:
@@ -53,5 +56,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

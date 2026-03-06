@@ -13,7 +13,7 @@ import yaml
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
-from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, set_seed
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CASUAL_INTERVENTION_ROOT = SCRIPT_DIR.parent.parent
@@ -283,6 +283,7 @@ def split_examples(
         )
     shuffled = list(examples)
     rng = random.Random(seed)
+    set_seed(seed)
     rng.shuffle(shuffled)
     train_split = shuffled[:train_size]
     val_split = shuffled[train_size : train_size + val_size]

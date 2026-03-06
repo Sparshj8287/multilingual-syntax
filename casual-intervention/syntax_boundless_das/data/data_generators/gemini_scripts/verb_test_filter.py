@@ -14,118 +14,40 @@ except ImportError:  # pragma: no cover - fallback when tqdm isn't installed
 
 
 PROMPT_TEMPLATE = """
-You are an expert Computational Linguist. Your task is to classify a raw list of verbs into strict syntactic categories (Slots) based on the **Recursive Grammar Templates** provided below.
+You are an expert Psycholinguist and Computational Linguist creating a strict Out-Of-Distribution (OOD) held-out test dataset for a Subject-Verb Agreement experiment. 
 
-**Context: The Template Architecture**
-We are building a dataset using the following Python template rules. A verb's "Tag" is determined by its position and function in these specific structures.
+Your Goal: I will provide you with a raw batch of 50 JSON objects containing English verbs. You must act as a strict gatekeeper. You will DISCARD all common, high-frequency verbs, and KEEP ONLY the rare, highly academic, or structurally ambiguous verbs.
 
-**Reference Code (The Ground Truth):**
+Your Task: Evaluate each verb against the strict selection criteria below. If a verb passes the filter, output it in the EXACT SAME JSONL format as it was provided.
 
-```python
-# KEY LEGEND:
-# MS = Main Subject (Human)   | IS = Inanimate Subject (Object)
-# ES = Embedded Subject (Human) | BS = Base Subject (Thinker/Speaker)
-# MV = Main Verb (Intransitive) | IV = Inanimate Verb (Intransitive)
-# EV = Embedded Verb (Transitive)| BV = Base Verb (Mental/Speech)
-# RMV = Reflexive Main Verb
+### 1. Selection Rules (KEEP These)
+To be selected, a verb MUST fall into:
+* Category A: RARE / ACADEMIC / COMPLEX
+  * Definition: Low-frequency, highly domain-specific, or multi-syllabic verbs. 
 
-self.rules = {
-    # 1. Main Verb (MV) Logic:
-    # Structure: [D, MS, ..., MV] -> "The author ... laughs."
-    # Rule: MV must be an action performed by a Human (MS) that does NOT require an object (Intransitive).
-    'simple_agrmt': (['D', 'MS', 'MV'], ...),
 
-    # 2. Inanimate Verb (IV) Logic:
-    # Structure: [D, IS, ..., IV] -> "The movie ... ends."
-    # Rule: IV must be an action performed by an Object (IS) (Intransitive).
-    'obj_rel_across_inanim': (['D', 'IS', ..., 'IV'], ...),
+### 2. Rejection Rules (Strictly DISCARD These)
+If a verb fits any of these descriptions, SKIP IT ENTIRELY. Do not include it in the output.
+* Common / High-Frequency: Everyday, simple verbs (e.g., eats, leads, brings, asks, serves, handles). These belong in the training set, not the OOD test set.
+* Highly Irregular "Be/Have/Do": Do not include forms of be, have, or do. 
+* Invalid POS: If the word cannot logically or grammatically function as a verb in standard English.
 
-    # 3. Embedded Verb (EV) Logic:
-    # Structure: [D, MS, C, D, ES, EV, MV] -> "The author that the guards [EV]..."
-    # Meaning: "The guards [EV] the author."
-    # Rule: EV must be Transitive and take a Human Object (MS).
-    'obj_rel_across_anim': (..., 'EV', 'MV'),
+### 3. Output Formatting (CRITICAL)
+* Output strictly in JSONL format. One valid JSON object per line.
+* Output EXACTLY the same keys as the input: "sg", "pl", "tags".
+* Do NOT add any new fields (no 'complexity', 'reason', or 'category' fields).
+* No markdown code blocks, no intro text, no conversational filler. Just the raw JSON lines.
 
-    # 4. Base Verb (BV) Logic:
-    # Structure: [D, BS, BV, D, MS, MV] -> "The banker [BV] that the pilot laughs."
-    # Rule: BV must be a verb of Thinking/Saying (taking a Sentential Complement).
-    'sent_comp': (['D', 'BS', 'BV', ...], ...),
+Example Input:
+{"sg": "eats", "pl": "eat", "tags": ["MV", "EV_ANIM", "EV_INAN"]}
+{"sg": "wardens", "pl": "warden", "tags": ["EV_ANIM", "EV_INAN"]}
+{"sg": "asks", "pl": "ask", "tags": ["MV", "EV_ANIM", "EV_INAN", "BV"]}
 
-    # 5. Reflexive Main Verb (RMV) Logic:
-    # Structure: [D, MS, RMV, ANPHR] -> "The author [RMV] himself."
-    # Rule: RMV must be a Transitive verb that a human does to themselves.
-    'simple_reflexives': (['D', 'MS', 'RMV', 'ANPHR'], ...)
-}
+Example Output (Your Target - dropping 'eats' and 'asks', keeping 'wardens'):
+{"sg": "wardens", "pl": "warden", "tags": ["EV_ANIM", "EV_INAN"]}
 
-```
-
----
-
-**Your Task:**
-Process the raw verb list below. For each verb, extract the **Singular (3rd Person)** and **Plural (Base)** forms, and assign strict tags based on the logic above.
-
-### **The Classification Rules (Test each verb against these Templates)**
-
-**1. Tag: `MV` (Intransitive Human Action)**
-
-* *Template Test:* `'simple_agrmt': ['D', 'MS', 'MV']`
-* *Context:* "The **author** [VERBS]." (Must be complete without an object).
-* *Examples:* *laughs, smiles, runs, sleeps, waits, speaks.*
-* *Discard if:* It needs an object (e.g., *likes, puts*).
-
-**2. Tag: `IV` (Intransitive Object Action)**
-
-* *Template Test:* `'obj_rel_across_inanim': ['D', 'IS', ..., 'IV']`
-* *Context:* "The **movie** [VERBS]."
-* *Examples:* *ends, starts, falls, burns, breaks, shines.*
-
-**3. Tag: `EV_ANIM` (Transitive Action on Human)**
-
-* *Template Test:* `'obj_rel_across_anim': [..., 'MS', ..., 'EV']`
-* *Context:* "The **author** that the guards [VERB]..." (Logic: Guards [VERB] Author).
-* *Rule:* Must be Transitive. Target is **Human**.
-* *Examples:* *likes, admires, hates, loves, hugs, criticizes, visits.*
-
-**4. Tag: `EV_INAN` (Transitive Action on Object)**
-
-* *Template Test:* `'obj_rel_across_inanim': [..., 'IS', ..., 'EV']`
-* *Context:* "The **movie** that the guards [VERB]..." (Logic: Guards [VERB] Movie).
-* *Rule:* Must be Transitive. Target is **Inanimate**.
-* *Examples:* *watched, bought, read, wrote, broke, found.*
-
-**5. Tag: `BV` (Mental/Speech Verb)**
-
-* *Template Test:* `'sent_comp': ['D', 'BS', 'BV', ...]`
-* *Context:* "The **banker** [VERBS] that..."
-* *Examples:* *thought, knew, said, claimed, believed, argued, asserted.*
-
-**6. Tag: `RMV` (Reflexive Action)**
-
-* *Template Test:* `'simple_reflexives': [..., 'RMV', 'ANPHR']`
-* *Context:* "The **author** [VERBS] himself."
-* *Examples:* *hurt, injured, embarrassed, disguised, cut.*
-
----
-
-**Output Format:**
-Return valid **JSONL**.
-
-* `sg`: 3rd Person Singular (e.g., "eats")
-* `pl`: Base Form (e.g., "eat")
-* `tags`: List of matching tags [`MV`, `IV`, `EV_ANIM`, `EV_INAN`, `BV`, `RMV`]
-
-**Example Output:**
-
-```json
-{"sg": "laughs", "pl": "laugh", "tags": ["MV"]}
-{"sg": "likes", "pl": "like", "tags": ["EV_ANIM", "EV_INAN"]}
-{"sg": "reads", "pl": "read", "tags": ["EV_INAN"]}
-{"sg": "thinks", "pl": "think", "tags": ["MV", "BV"]}
-{"sg": "hurts", "pl": "hurt", "tags": ["RMV", "EV_ANIM", "EV_INAN"]}
-
-```
-
-Raw Verb List to Process:\n[PASTE YOUR LIST HERE]
+Raw Word List to Process:
+[PASTE YOUR LIST HERE]
 """
 
 
@@ -133,17 +55,17 @@ def parse_args():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     default_input = os.path.join(
         script_dir,
-        "../../eng/raw_data_cleaned/verb/verb.tsv",
+        "../../eng/raw_data_cleaned/verb/gemini_verbs.jsonl",
     )
     default_output = os.path.join(
         script_dir,
-        "../../eng/raw_data_cleaned/verb/gemini_verbs.jsonl",
+        "../../eng/raw_data_cleaned/verb/gemini_verbs_test.jsonl",
     )
-    parser = argparse.ArgumentParser(description="Filter verbs with Gemini.")
+    parser = argparse.ArgumentParser(description="Filter verbs into an OOD test set with Gemini.")
     parser.add_argument(
         "--input",
         default=default_input,
-        help="Path to input TSV file.",
+        help="Path to input JSONL file.",
     )
     parser.add_argument(
         "--output",
@@ -186,8 +108,18 @@ def load_lines(input_path):
     if not os.path.exists(input_path):
         print(f"Error: Input file not found at {input_path}")
         sys.exit(1)
+    lines = []
     with open(input_path, "r", encoding="utf-8") as infile:
-        return [line.strip() for line in infile if line.strip()]
+        for line in infile:
+            line = line.strip()
+            if line:
+                # Validate it's JSONL
+                try:
+                    json.loads(line)
+                    lines.append(line)
+                except json.JSONDecodeError:
+                    print(f"Warning: skipping invalid JSON line: {line}")
+    return lines
 
 
 def chunk_list(items, batch_size):
@@ -197,10 +129,9 @@ def chunk_list(items, batch_size):
 
 def build_prompt(batch_lines):
     batch_text = "\n".join(batch_lines)
-    print(batch_text)    
     return PROMPT_TEMPLATE.replace(
-        "Raw Verb List to Process:\n[PASTE YOUR LIST HERE]",
-        f"Raw Verb List to Process:\n{batch_text}",
+        "[PASTE YOUR LIST HERE]",
+        batch_text,
     )
 
 
@@ -250,16 +181,7 @@ def main():
         for idx, batch in enumerate(iterator):
             time.sleep(3)
 
-            batch_filtered = []
-            for line in batch:
-                parts = line.split("\t")
-                if len(parts) >= 2:
-                    batch_filtered.append("\t".join(parts[:2]))
-
-            
-
-
-            prompt = build_prompt(batch_filtered)
+            prompt = build_prompt(batch)
             contents = [
                 types.Content(
                     role="user",
@@ -268,7 +190,6 @@ def main():
             ]
 
             response_text = ""
-            print(prompt)
             attempt = 0
             while True:
                 attempt += 1
@@ -302,8 +223,6 @@ def main():
                     time.sleep(wait_time)
                     response_text = ""
 
-            print(response_text)
-            print("\n\n--------------------------------\n\n")
 
             json_objects = extract_jsonl(response_text)
             if not json_objects:

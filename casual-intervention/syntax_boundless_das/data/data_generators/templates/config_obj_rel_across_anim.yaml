@@ -16,15 +16,18 @@ generation:
   # Reproducibility
   seed: 13
 
-  # Pick which lexicon C list to use: "anim" or "inanim".
-  c_mode: anim
+  # Generation mode(s):
+  # - [anim] -> animate-only generation
+  # - [inanim] -> inanimate-only generation
+  # - [anim, inanim] -> split num_pairs across both categories
+  mode: [anim, inanim]
 
 lexicon:
   # Complementizers (animate/inanimate lists)
   c_words_anim:
-    # - who
+    - who
     - that
-    # - whom
+    - whom
   c_words_inanim:
     - that
 
@@ -33,14 +36,15 @@ lexicon:
     - the
 
 paths:
-  nouns: ../../eng/raw_data_cleaned/noun/gemini_nouns.jsonl
-  verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs.jsonl
-  filtered_verbs: ../../eng/raw_data_cleaned/verb/filtered_verbs.jsonl
+  nouns: ../../eng/raw_data_cleaned/noun/gemini_nouns_train.jsonl
+  verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs_train.jsonl
+  filtered_verbs: ../../eng/raw_data_cleaned/verb/gemini_verbs_mv_train.jsonl
 
 output:
   # Script creates variation subfolders automatically under this root.
   paradigm: obj_rel_across_anim
   data_dir: data
+  split: train
 
 filtering_without_ac:
   input_root: data/obj_rel_across_anim

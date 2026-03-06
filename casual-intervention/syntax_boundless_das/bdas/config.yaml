@@ -1,9 +1,9 @@
 model:
-  name: qwen-3-8b
+  name: random_qwen-3-8b
   path: Qwen/Qwen3-8B-Base
 
 dataset:
-  path: ../data/data_generators/templates/data/obj_rel_across_anim/maximal/obj_rel_across_anim_pairs_maximal_1.jsonl
+  path: ../data/data_generators/templates/data/obj_rel_across_anim/linear/obj_rel_across_anim_pairs_linear_1.jsonl
   train_size: 15000
   val_size: 1000
   test_size: 2000
@@ -11,7 +11,7 @@ dataset:
 
 runtime:
   device: cuda
-  device_map: auto
+  device_map: None
   torch_dtype: bfloat16
   use_fast_tokenizer: true
 
