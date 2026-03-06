@@ -1,17 +1,25 @@
 model:
-  name: random_qwen-3-8b
+  name: qwen-3-8b
   path: Qwen/Qwen3-8B-Base
 
 dataset:
-  path: ../data/data_generators/templates/data/obj_rel_across_anim/linear/obj_rel_across_anim_pairs_linear_1.jsonl
-  train_size: 15000
+  data_root: ../data/data_generators/templates/data
+  dataset_name: obj_rel_across_anim
+  variation: linear
+  NUA: [1, 2, 3, 4, 5, 6]
+  train_split_dir: train
+  test_split_dir: test
+  file_name_template: "{dataset_name}_pairs_{variation}_{nua}.jsonl"
+  # train_size can be omitted to use all training rows except validation rows.
+  train_size: 19000
   val_size: 1000
-  test_size: 2000
+  # test_size=0 means use full test file from test_split_dir.
+  test_size: 0
   shuffle_seed: 42
 
 runtime:
   device: cuda
-  device_map: None
+  device_map: auto
   torch_dtype: bfloat16
   use_fast_tokenizer: true
 

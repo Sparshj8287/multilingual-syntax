@@ -13,7 +13,7 @@ import yaml
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
-from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, set_seed
+from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CASUAL_INTERVENTION_ROOT = SCRIPT_DIR.parent.parent
@@ -289,6 +289,128 @@ def split_examples(
     val_split = shuffled[train_size : train_size + val_size]
     test_split = shuffled[train_size + val_size : required]
     return train_split, val_split, test_split
+
+
+def split_train_val_examples(
+    train_examples: list[dict[str, Any]],
+    *,
+    val_size: int,
+    seed: int,
+    train_size: int | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if val_size <= 0:
+        raise ValueError("dataset.val_size must be > 0.")
+    shuffled = list(train_examples)
+    rng = random.Random(seed)
+    rng.shuffle(shuffled)
+
+    if train_size is not None and train_size > 0:
+        required = train_size + val_size
+        if len(shuffled) < required:
+            raise ValueError(
+                "Training file too small for requested train/val split: "
+                f"{len(shuffled)} < {required}"
+            )
+        train_split = shuffled[:train_size]
+        val_split = shuffled[train_size : train_size + val_size]
+        return train_split, val_split
+
+    if len(shuffled) <= val_size:
+        raise ValueError(
+            "Training file too small for validation split: "
+            f"{len(shuffled)} <= {val_size}"
+        )
+    val_split = shuffled[:val_size]
+    train_split = shuffled[val_size:]
+    return train_split, val_split
+
+
+def normalize_nua_values(raw_value: Any) -> list[int]:
+    if raw_value is None:
+        return [1]
+    if isinstance(raw_value, (int, float)):
+        return [int(raw_value)]
+    if isinstance(raw_value, str):
+        value = raw_value.strip()
+        if not value:
+            return [1]
+        if "," in value:
+            return [int(v.strip()) for v in value.split(",") if v.strip()]
+        return [int(value)]
+    if isinstance(raw_value, (list, tuple)):
+        values = [int(v) for v in raw_value]
+        if not values:
+            raise ValueError("dataset.NUA list cannot be empty.")
+        return values
+    raise ValueError(f"Unsupported dataset.NUA value: {raw_value}")
+
+
+def build_dataset_run_specs(
+    dataset_cfg: dict[str, Any],
+    config_dir: Path,
+) -> list[dict[str, Any]]:
+    dataset_name = str(dataset_cfg.get("dataset_name", "")).strip()
+    variation = str(dataset_cfg.get("variation", "")).strip()
+    if not dataset_name or not variation:
+        raise ValueError(
+            "dataset.dataset_name and dataset.variation are required."
+        )
+
+    data_root = resolve_path(
+        config_dir,
+        str(
+            dataset_cfg.get(
+                "data_root", "../data/data_generators/templates/data"
+            )
+        ),
+    )
+    train_split_dir = str(dataset_cfg.get("train_split_dir", "train")).strip()
+    test_split_dir = str(dataset_cfg.get("test_split_dir", "test")).strip()
+    file_name_template = str(
+        dataset_cfg.get(
+            "file_name_template",
+            "{dataset_name}_pairs_{variation}_{nua}.jsonl",
+        )
+    )
+    nua_values = normalize_nua_values(
+        dataset_cfg.get("NUA", dataset_cfg.get("nua"))
+    )
+
+    runs: list[dict[str, Any]] = []
+    for nua in nua_values:
+        file_name = file_name_template.format(
+            dataset_name=dataset_name,
+            variation=variation,
+            nua=nua,
+        )
+        train_path = (
+            data_root
+            / dataset_name
+            / train_split_dir
+            / variation
+            / file_name
+        )
+        test_path = (
+            data_root
+            / dataset_name
+            / test_split_dir
+            / variation
+            / file_name
+        )
+        if not train_path.exists():
+            raise ValueError(f"Training file does not exist: {train_path}")
+        if not test_path.exists():
+            raise ValueError(f"Test file does not exist: {test_path}")
+        runs.append(
+            {
+                "dataset_name": dataset_name,
+                "variation": variation,
+                "nua": int(nua),
+                "train_path": train_path,
+                "test_path": test_path,
+            }
+        )
+    return runs
 
 
 def collate_examples(
@@ -778,10 +900,6 @@ def main() -> None:
         raise ValueError("model.path is required in config.")
     model_name = str(model_cfg.get("name", model_path)).strip()
 
-    dataset_path = resolve_path(config_dir, str(dataset_cfg.get("path", "")))
-    if not dataset_path.exists():
-        raise ValueError(f"Dataset file does not exist: {dataset_path}")
-
     intervene_direction = str(
         intervention_cfg.get("intervene_direction", "source_to_base")
     ).strip()
@@ -791,9 +909,10 @@ def main() -> None:
         )
 
     split_seed = int(dataset_cfg.get("shuffle_seed", 42))
-    train_size = int(dataset_cfg.get("train_size", 15000))
+    train_size_value = dataset_cfg.get("train_size", None)
+    train_size = int(train_size_value) if train_size_value is not None else None
     val_size = int(dataset_cfg.get("val_size", 1000))
-    test_size = int(dataset_cfg.get("test_size", 2000))
+    test_size = int(dataset_cfg.get("test_size", 0))
     train_seed = int(training_cfg.get("seed", 42))
 
     set_seed(train_seed)
@@ -810,49 +929,18 @@ def main() -> None:
     )
     model_device = next(model.parameters()).device
 
-    rows = load_jsonl(dataset_path)
-    examples = build_examples(rows, tokenizer)
-    train_examples, val_examples, test_examples = split_examples(
-        examples,
-        train_size=train_size,
-        val_size=val_size,
-        test_size=test_size,
-        seed=split_seed,
-    )
-
+    dataset_runs = build_dataset_run_specs(dataset_cfg, config_dir)
+    dataset_name = str(dataset_cfg.get("dataset_name", "")).strip()
+    variation = str(dataset_cfg.get("variation", "")).strip()
     print(
-        f"[data] total={len(examples)} train={len(train_examples)} "
-        f"val={len(val_examples)} test={len(test_examples)}"
+        f"[data] dataset={dataset_name} variation={variation} "
+        f"nua_values={[run['nua'] for run in dataset_runs]}"
     )
     print(f"[setup] intervene_direction={intervene_direction}")
 
     pad_id = model.generation_config.pad_token_id
     if pad_id is None:
         pad_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else 0
-
-    collate_fn = lambda batch: collate_examples(
-        batch,
-        pad_id=pad_id,
-        intervene_direction=intervene_direction,
-    )
-    train_dataloader = DataLoader(
-        train_examples,
-        batch_size=int(training_cfg.get("batch_size", 16)),
-        shuffle=True,
-        collate_fn=collate_fn,
-    )
-    val_dataloader = DataLoader(
-        val_examples,
-        batch_size=int(training_cfg.get("eval_batch_size", 16)),
-        shuffle=False,
-        collate_fn=collate_fn,
-    )
-    test_dataloader = DataLoader(
-        test_examples,
-        batch_size=int(training_cfg.get("eval_batch_size", 16)),
-        shuffle=False,
-        collate_fn=collate_fn,
-    )
 
     raw_layer_value = intervention_cfg.get("layer", intervention_cfg.get("layers", 15))
     if isinstance(raw_layer_value, (list, tuple)):
@@ -867,19 +955,6 @@ def main() -> None:
 
     output_root = resolve_path(config_dir, str(output_cfg.get("root_dir", "results")))
     model_dir_name = sanitize_model_dir_name(model_name, model_path)
-
-    dataset_path_str = str(dataset_path)
-    dataset_dir_name = dataset_path_str.split("/")[-3]
-
-    dataset_subset_dir_name = dataset_path_str.split("/")[-2]
-
-    if dataset_dir_name == "simple_agreement":
-        result_dir = output_root / model_dir_name / dataset_subset_dir_name / intervene_direction
-    else:
-        result_dir = output_root / model_dir_name / dataset_dir_name / dataset_subset_dir_name / intervene_direction
-
-    result_dir.mkdir(parents=True, exist_ok=True)
-
     epoch_tracking_cfg = output_cfg.get("epoch_tracking", {})
     epoch_tracking_enabled = bool(epoch_tracking_cfg.get("enabled", True))
     epoch_tracking_sample_count = int(epoch_tracking_cfg.get("sample_count", 10))
@@ -888,275 +963,365 @@ def main() -> None:
     )
     if epoch_tracking_sample_count <= 0:
         raise ValueError("output.epoch_tracking.sample_count must be > 0")
-    if epoch_tracking_sample_count > len(test_examples):
-        raise ValueError(
-            "output.epoch_tracking.sample_count cannot exceed test set size "
-            f"({len(test_examples)})."
-        )
 
-    sample_rng = random.Random(split_seed + 999)
-    sample_indices = sample_rng.sample(range(len(test_examples)), 50)
-    sample_examples = [test_examples[i] for i in sample_indices]
-    epoch_tracking_rng = random.Random(split_seed + 2026)
-    epoch_tracking_indices = epoch_tracking_rng.sample(
-        range(len(test_examples)), epoch_tracking_sample_count
-    )
-    epoch_tracking_examples = [test_examples[i] for i in epoch_tracking_indices]
+    variation_result_dir = output_root / model_dir_name / dataset_name / variation
+    variation_result_dir.mkdir(parents=True, exist_ok=True)
 
-    all_layer_results: list[dict[str, Any]] = []
-    for layer in layers:
-        set_seed(train_seed)
-        random.seed(train_seed)
-        torch.manual_seed(train_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(train_seed)
+    all_nua_summary: list[dict[str, Any]] = []
+    for run_spec in dataset_runs:
+        nua = int(run_spec["nua"])
+        train_path = Path(run_spec["train_path"])
+        test_path = Path(run_spec["test_path"])
+        attractor_dir = variation_result_dir / f"{nua}_attractor" / intervene_direction
+        attractor_dir.mkdir(parents=True, exist_ok=True)
 
-        layer_result_dir = result_dir / f"layer_{layer}"
-        layer_result_dir.mkdir(parents=True, exist_ok=True)
-        epoch_tracking_path = layer_result_dir / epoch_tracking_file_name
+        train_rows = load_jsonl(train_path)
+        test_rows = load_jsonl(test_path)
+        train_pool_examples = build_examples(train_rows, tokenizer)
+        test_examples_full = build_examples(test_rows, tokenizer)
 
-        intervenable_config = IntervenableConfig(
-            model_type=type(model),
-            representations=[
-                RepresentationConfig(
-                    layer=layer,
-                    component=component,
-                    unit=unit,
-                    max_number_of_units=1,
+        if test_size > 0:
+            if len(test_examples_full) < test_size:
+                raise ValueError(
+                    f"Test file {test_path} has only {len(test_examples_full)} rows, "
+                    f"but dataset.test_size={test_size} was requested."
                 )
-            ],
-            intervention_types=BoundlessRotatedSpaceIntervention,
-        )
-        intervenable = IntervenableModel(intervenable_config, model)
-        intervenable.disable_model_gradients()
-
-        if device_map is None:
-            intervenable.set_device(runtime_device)
-            training_device = runtime_device
+            test_examples = test_examples_full[:test_size]
         else:
-            intervenable.set_device(model_device, set_model=False)
-            training_device = model_device
+            test_examples = test_examples_full
+
+        train_examples, val_examples = split_train_val_examples(
+            train_pool_examples,
+            val_size=val_size,
+            seed=split_seed + nua,
+            train_size=train_size,
+        )
+        if len(test_examples) < 50:
+            raise ValueError(
+                f"Need at least 50 test rows for sample logging, got {len(test_examples)} for {test_path}"
+            )
+        if epoch_tracking_sample_count > len(test_examples):
+            raise ValueError(
+                "output.epoch_tracking.sample_count cannot exceed test set size "
+                f"({len(test_examples)})."
+            )
 
         print(
-            f"[model][layer {layer}] base model params: {count_parameters(intervenable.model)}"
-        )
-        print(
-            f"[model][layer {layer}] intervention params: {intervenable.count_parameters()}"
+            f"[data][nua={nua}] train_file={train_path.name} test_file={test_path.name} "
+            f"train={len(train_examples)} val={len(val_examples)} test={len(test_examples)}"
         )
 
-        before_header = (
-            "Detailed 50-sample logs BEFORE training\n"
-            f"Direction: {intervene_direction}\n"
-            f"Layer: {layer}\n"
-            "Logit index 0 = target correct verb, index 1 = wrong verb"
-        )
-        before_text = build_50_sample_logs(
-            intervenable,
-            sample_examples,
+        collate_fn = lambda batch: collate_examples(
+            batch,
             pad_id=pad_id,
             intervene_direction=intervene_direction,
-            device=training_device,
-            header=before_header,
         )
-        before_path = layer_result_dir / str(
-            output_cfg.get("before_training_log", "50_samples_before_training.txt")
+        train_dataloader = DataLoader(
+            train_examples,
+            batch_size=int(training_cfg.get("batch_size", 16)),
+            shuffle=True,
+            collate_fn=collate_fn,
         )
-        before_path.write_text(before_text, encoding="utf-8")
-        print(before_text)
+        val_dataloader = DataLoader(
+            val_examples,
+            batch_size=int(training_cfg.get("eval_batch_size", 16)),
+            shuffle=False,
+            collate_fn=collate_fn,
+        )
+        test_dataloader = DataLoader(
+            test_examples,
+            batch_size=int(training_cfg.get("eval_batch_size", 16)),
+            shuffle=False,
+            collate_fn=collate_fn,
+        )
 
-        baseline_val_metrics = evaluate(intervenable, val_dataloader, training_device)
-        baseline_test_metrics = evaluate(intervenable, test_dataloader, training_device)
-        print(
-            f"[baseline][layer {layer}] val_acc={baseline_val_metrics['accuracy']:.4f} "
-            f"test_acc={baseline_test_metrics['accuracy']:.4f}"
+        sample_rng = random.Random(split_seed + 999 + nua)
+        sample_indices = sample_rng.sample(range(len(test_examples)), 50)
+        sample_examples = [test_examples[i] for i in sample_indices]
+        epoch_tracking_rng = random.Random(split_seed + 2026 + nua)
+        epoch_tracking_indices = epoch_tracking_rng.sample(
+            range(len(test_examples)), epoch_tracking_sample_count
         )
+        epoch_tracking_examples = [test_examples[i] for i in epoch_tracking_indices]
 
-        epoch_tracking_history: list[dict[str, Any]] = []
-        if epoch_tracking_enabled:
-            baseline_tracking_header = (
-                "Fixed sample logs for epoch-wise test tracking (BEFORE training)\n"
+        all_layer_results: list[dict[str, Any]] = []
+        for layer in layers:
+            set_seed(train_seed)
+            random.seed(train_seed)
+            torch.manual_seed(train_seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(train_seed)
+
+            layer_result_dir = attractor_dir / f"layer_{layer}"
+            layer_result_dir.mkdir(parents=True, exist_ok=True)
+            epoch_tracking_path = layer_result_dir / epoch_tracking_file_name
+
+            intervenable_config = IntervenableConfig(
+                model_type=type(model),
+                representations=[
+                    RepresentationConfig(
+                        layer=layer,
+                        component=component,
+                        unit=unit,
+                        max_number_of_units=1,
+                    )
+                ],
+                intervention_types=BoundlessRotatedSpaceIntervention,
+            )
+            intervenable = IntervenableModel(intervenable_config, model)
+            intervenable.disable_model_gradients()
+
+            if device_map is None:
+                intervenable.set_device(runtime_device)
+                training_device = runtime_device
+            else:
+                intervenable.set_device(model_device, set_model=False)
+                training_device = model_device
+
+            print(
+                f"[model][nua={nua}][layer {layer}] base model params: {count_parameters(intervenable.model)}"
+            )
+            print(
+                f"[model][nua={nua}][layer {layer}] intervention params: {intervenable.count_parameters()}"
+            )
+
+            before_header = (
+                "Detailed 50-sample logs BEFORE training\n"
                 f"Direction: {intervene_direction}\n"
+                f"NUA: {nua}\n"
                 f"Layer: {layer}\n"
                 "Logit index 0 = target correct verb, index 1 = wrong verb"
             )
-            baseline_tracking_samples = build_sample_logs(
+            before_text = build_50_sample_logs(
                 intervenable,
-                epoch_tracking_examples,
+                sample_examples,
                 pad_id=pad_id,
                 intervene_direction=intervene_direction,
                 device=training_device,
-                header=baseline_tracking_header,
-                expected_count=epoch_tracking_sample_count,
+                header=before_header,
             )
-            tracking_text = build_epoch_tracking_text(
-                intervene_direction=intervene_direction,
-                baseline_test_metrics=baseline_test_metrics,
-                epoch_tracking_history=epoch_tracking_history,
-                sample_logs_text=baseline_tracking_samples,
-                sample_count=epoch_tracking_sample_count,
+            before_path = layer_result_dir / str(
+                output_cfg.get("before_training_log", "50_samples_before_training.txt")
             )
-            epoch_tracking_path.write_text(tracking_text, encoding="utf-8")
-            print(f"[saved] {epoch_tracking_path} (before training)")
+            before_path.write_text(before_text, encoding="utf-8")
+            print(before_text)
 
-        def on_epoch_end(epoch_result: dict[str, Any]) -> None:
-            if not epoch_tracking_enabled:
-                return
-            epoch_tracking_history.append(
+            baseline_val_metrics = evaluate(intervenable, val_dataloader, training_device)
+            baseline_test_metrics = evaluate(intervenable, test_dataloader, training_device)
+            print(
+                f"[baseline][nua={nua}][layer {layer}] val_acc={baseline_val_metrics['accuracy']:.4f} "
+                f"test_acc={baseline_test_metrics['accuracy']:.4f}"
+            )
+
+            epoch_tracking_history: list[dict[str, Any]] = []
+            if epoch_tracking_enabled:
+                baseline_tracking_header = (
+                    "Fixed sample logs for epoch-wise test tracking (BEFORE training)\n"
+                    f"Direction: {intervene_direction}\n"
+                    f"NUA: {nua}\n"
+                    f"Layer: {layer}\n"
+                    "Logit index 0 = target correct verb, index 1 = wrong verb"
+                )
+                baseline_tracking_samples = build_sample_logs(
+                    intervenable,
+                    epoch_tracking_examples,
+                    pad_id=pad_id,
+                    intervene_direction=intervene_direction,
+                    device=training_device,
+                    header=baseline_tracking_header,
+                    expected_count=epoch_tracking_sample_count,
+                )
+                tracking_text = build_epoch_tracking_text(
+                    intervene_direction=intervene_direction,
+                    baseline_test_metrics=baseline_test_metrics,
+                    epoch_tracking_history=epoch_tracking_history,
+                    sample_logs_text=baseline_tracking_samples,
+                    sample_count=epoch_tracking_sample_count,
+                )
+                epoch_tracking_path.write_text(tracking_text, encoding="utf-8")
+                print(f"[saved] {epoch_tracking_path} (before training)")
+
+            def on_epoch_end(epoch_result: dict[str, Any]) -> None:
+                if not epoch_tracking_enabled:
+                    return
+                epoch_tracking_history.append(
+                    {
+                        "epoch": int(epoch_result["epoch"]),
+                        "test_accuracy": float(epoch_result["test_accuracy"]),
+                        "test_correct": int(epoch_result["test_correct"]),
+                        "test_total": int(epoch_result["test_total"]),
+                        "test_ties": int(epoch_result["test_ties"]),
+                    }
+                )
+                epoch_header = (
+                    "Fixed sample logs for epoch-wise test tracking "
+                    f"(AFTER epoch {epoch_result['epoch']})\n"
+                    f"Direction: {intervene_direction}\n"
+                    f"NUA: {nua}\n"
+                    f"Layer: {layer}\n"
+                    "Logit index 0 = target correct verb, index 1 = wrong verb"
+                )
+                epoch_samples = build_sample_logs(
+                    intervenable,
+                    epoch_tracking_examples,
+                    pad_id=pad_id,
+                    intervene_direction=intervene_direction,
+                    device=training_device,
+                    header=epoch_header,
+                    expected_count=epoch_tracking_sample_count,
+                )
+                tracking_text = build_epoch_tracking_text(
+                    intervene_direction=intervene_direction,
+                    baseline_test_metrics=baseline_test_metrics,
+                    epoch_tracking_history=epoch_tracking_history,
+                    sample_logs_text=epoch_samples,
+                    sample_count=epoch_tracking_sample_count,
+                )
+                epoch_tracking_path.write_text(tracking_text, encoding="utf-8")
+                print(
+                    f"[saved] {epoch_tracking_path} (after epoch {epoch_result['epoch']})"
+                )
+
+            history = train(
+                intervenable,
+                train_dataloader,
+                val_dataloader,
+                training_cfg,
+                device=training_device,
+                test_dataloader=test_dataloader,
+                epoch_end_callback=on_epoch_end,
+            )
+
+            final_val_metrics = evaluate(intervenable, val_dataloader, training_device)
+            final_test_metrics = evaluate(intervenable, test_dataloader, training_device)
+            print(
+                f"[final][nua={nua}][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
+                f"test_acc={final_test_metrics['accuracy']:.4f}"
+            )
+
+            after_header = (
+                "Detailed 50-sample logs AFTER training\n"
+                f"Direction: {intervene_direction}\n"
+                f"NUA: {nua}\n"
+                f"Layer: {layer}\n"
+                "Logit index 0 = target correct verb, index 1 = wrong verb"
+            )
+            after_text = build_50_sample_logs(
+                intervenable,
+                sample_examples,
+                pad_id=pad_id,
+                intervene_direction=intervene_direction,
+                device=training_device,
+                header=after_header,
+            )
+            after_path = layer_result_dir / str(
+                output_cfg.get("after_training_log", "50_samples_after_training.txt")
+            )
+            after_path.write_text(after_text, encoding="utf-8")
+            print(after_text)
+
+            result_payload = {
+                "model": {
+                    "name": model_name,
+                    "path": model_path,
+                    "output_dir_name": model_dir_name,
+                },
+                "dataset": {
+                    "dataset_name": dataset_name,
+                    "variation": variation,
+                    "nua": nua,
+                    "train_path": str(train_path),
+                    "test_path": str(test_path),
+                    "train_pool_size": len(train_pool_examples),
+                    "train_size": len(train_examples),
+                    "val_size": len(val_examples),
+                    "test_size": len(test_examples),
+                    "shuffle_seed": split_seed,
+                    "sample_row_indices_for_50_logs": [
+                        sample_examples[i]["row_idx"] for i in range(50)
+                    ],
+                    "sample_row_indices_for_epoch_tracking_logs": [
+                        epoch_tracking_examples[i]["row_idx"]
+                        for i in range(epoch_tracking_sample_count)
+                    ],
+                },
+                "intervention": {
+                    "direction": intervene_direction,
+                    "layer": layer,
+                    "component": component,
+                    "unit": unit,
+                    "position": "last_token_of_prefix",
+                },
+                "training": {
+                    "seed": train_seed,
+                    "epochs": int(training_cfg.get("epochs", 3)),
+                    "batch_size": int(training_cfg.get("batch_size", 16)),
+                    "eval_batch_size": int(training_cfg.get("eval_batch_size", 16)),
+                    "gradient_accumulation_steps": int(
+                        training_cfg.get("gradient_accumulation_steps", 1)
+                    ),
+                    "lr_rotate": float(training_cfg.get("lr_rotate", 1.0e-3)),
+                    "lr_boundary": float(training_cfg.get("lr_boundary", 1.0e-2)),
+                    "warmup_ratio": float(training_cfg.get("warmup_ratio", 0.1)),
+                    "temperature_start": float(
+                        training_cfg.get("temperature_start", 50.0)
+                    ),
+                    "temperature_end": float(training_cfg.get("temperature_end", 0.1)),
+                    "boundary_loss_weight": float(
+                        training_cfg.get("boundary_loss_weight", 1.0)
+                    ),
+                    "history": history,
+                },
+                "baseline": {
+                    "val": baseline_val_metrics,
+                    "test": baseline_test_metrics,
+                },
+                "final": {
+                    "val": final_val_metrics,
+                    "test": final_test_metrics,
+                },
+                "artifacts": {
+                    "before_training_log": str(before_path),
+                    "after_training_log": str(after_path),
+                    "epoch_tracking_log": (
+                        str(epoch_tracking_path) if epoch_tracking_enabled else None
+                    ),
+                },
+            }
+            result_path = layer_result_dir / str(
+                output_cfg.get("result_file", "result.json")
+            )
+            with result_path.open("w", encoding="utf-8") as handle:
+                json.dump(result_payload, handle, indent=2)
+            print(f"[saved] {result_path}")
+
+            all_layer_results.append(
                 {
-                    "epoch": int(epoch_result["epoch"]),
-                    "test_accuracy": float(epoch_result["test_accuracy"]),
-                    "test_correct": int(epoch_result["test_correct"]),
-                    "test_total": int(epoch_result["test_total"]),
-                    "test_ties": int(epoch_result["test_ties"]),
+                    "layer": layer,
+                    "result_file": str(result_path),
+                    "final_test_accuracy": final_test_metrics["accuracy"],
+                    "final_val_accuracy": final_val_metrics["accuracy"],
                 }
             )
-            epoch_header = (
-                "Fixed sample logs for epoch-wise test tracking "
-                f"(AFTER epoch {epoch_result['epoch']})\n"
-                f"Direction: {intervene_direction}\n"
-                f"Layer: {layer}\n"
-                "Logit index 0 = target correct verb, index 1 = wrong verb"
-            )
-            epoch_samples = build_sample_logs(
-                intervenable,
-                epoch_tracking_examples,
-                pad_id=pad_id,
-                intervene_direction=intervene_direction,
-                device=training_device,
-                header=epoch_header,
-                expected_count=epoch_tracking_sample_count,
-            )
-            tracking_text = build_epoch_tracking_text(
-                intervene_direction=intervene_direction,
-                baseline_test_metrics=baseline_test_metrics,
-                epoch_tracking_history=epoch_tracking_history,
-                sample_logs_text=epoch_samples,
-                sample_count=epoch_tracking_sample_count,
-            )
-            epoch_tracking_path.write_text(tracking_text, encoding="utf-8")
-            print(
-                f"[saved] {epoch_tracking_path} (after epoch {epoch_result['epoch']})"
-            )
 
-        history = train(
-            intervenable,
-            train_dataloader,
-            val_dataloader,
-            training_cfg,
-            device=training_device,
-            test_dataloader=test_dataloader,
-            epoch_end_callback=on_epoch_end,
-        )
-
-        final_val_metrics = evaluate(intervenable, val_dataloader, training_device)
-        final_test_metrics = evaluate(intervenable, test_dataloader, training_device)
-        print(
-            f"[final][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
-            f"test_acc={final_test_metrics['accuracy']:.4f}"
-        )
-
-        after_header = (
-            "Detailed 50-sample logs AFTER training\n"
-            f"Direction: {intervene_direction}\n"
-            f"Layer: {layer}\n"
-            "Logit index 0 = target correct verb, index 1 = wrong verb"
-        )
-        after_text = build_50_sample_logs(
-            intervenable,
-            sample_examples,
-            pad_id=pad_id,
-            intervene_direction=intervene_direction,
-            device=training_device,
-            header=after_header,
-        )
-        after_path = layer_result_dir / str(
-            output_cfg.get("after_training_log", "50_samples_after_training.txt")
-        )
-        after_path.write_text(after_text, encoding="utf-8")
-        print(after_text)
-
-        result_payload = {
-            "model": {
-                "name": model_name,
-                "path": model_path,
-                "output_dir_name": model_dir_name,
-            },
-            "dataset": {
-                "path": str(dataset_path),
-                "total_rows": len(examples),
-                "train_size": len(train_examples),
-                "val_size": len(val_examples),
-                "test_size": len(test_examples),
-                "shuffle_seed": split_seed,
-                "sample_row_indices_for_50_logs": [
-                    sample_examples[i]["row_idx"] for i in range(50)
-                ],
-                "sample_row_indices_for_epoch_tracking_logs": [
-                    epoch_tracking_examples[i]["row_idx"]
-                    for i in range(epoch_tracking_sample_count)
-                ],
-            },
-            "intervention": {
-                "direction": intervene_direction,
-                "layer": layer,
-                "component": component,
-                "unit": unit,
-                "position": "last_token_of_prefix",
-            },
-            "training": {
-                "seed": train_seed,
-                "epochs": int(training_cfg.get("epochs", 3)),
-                "batch_size": int(training_cfg.get("batch_size", 16)),
-                "eval_batch_size": int(training_cfg.get("eval_batch_size", 16)),
-                "gradient_accumulation_steps": int(
-                    training_cfg.get("gradient_accumulation_steps", 1)
-                ),
-                "lr_rotate": float(training_cfg.get("lr_rotate", 1.0e-3)),
-                "lr_boundary": float(training_cfg.get("lr_boundary", 1.0e-2)),
-                "warmup_ratio": float(training_cfg.get("warmup_ratio", 0.1)),
-                "temperature_start": float(
-                    training_cfg.get("temperature_start", 50.0)
-                ),
-                "temperature_end": float(training_cfg.get("temperature_end", 0.1)),
-                "boundary_loss_weight": float(
-                    training_cfg.get("boundary_loss_weight", 1.0)
-                ),
-                "history": history,
-            },
-            "baseline": {
-                "val": baseline_val_metrics,
-                "test": baseline_test_metrics,
-            },
-            "final": {
-                "val": final_val_metrics,
-                "test": final_test_metrics,
-            },
-            "artifacts": {
-                "before_training_log": str(before_path),
-                "after_training_log": str(after_path),
-                "epoch_tracking_log": (
-                    str(epoch_tracking_path) if epoch_tracking_enabled else None
-                ),
-            },
-        }
-        result_path = layer_result_dir / str(output_cfg.get("result_file", "result.json"))
-        with result_path.open("w", encoding="utf-8") as handle:
-            json.dump(result_payload, handle, indent=2)
-        print(f"[saved] {result_path}")
-
-        all_layer_results.append(
+        summary_path = attractor_dir / "all_layers_summary.json"
+        with summary_path.open("w", encoding="utf-8") as handle:
+            json.dump({"layers": all_layer_results, "nua": nua}, handle, indent=2)
+        print(f"[saved] {summary_path}")
+        all_nua_summary.append(
             {
-                "layer": layer,
-                "result_file": str(result_path),
-                "final_test_accuracy": final_test_metrics["accuracy"],
-                "final_val_accuracy": final_val_metrics["accuracy"],
+                "nua": nua,
+                "summary_file": str(summary_path),
+                "result_root": str(attractor_dir),
             }
         )
 
-    summary_path = result_dir / "all_layers_summary.json"
-    with summary_path.open("w", encoding="utf-8") as handle:
-        json.dump({"layers": all_layer_results}, handle, indent=2)
-    print(f"[saved] {summary_path}")
+    overall_summary_path = (
+        variation_result_dir / f"{intervene_direction}_all_nua_summary.json"
+    )
+    with overall_summary_path.open("w", encoding="utf-8") as handle:
+        json.dump({"runs": all_nua_summary}, handle, indent=2)
+    print(f"[saved] {overall_summary_path}")
 
 
 if __name__ == "__main__":
