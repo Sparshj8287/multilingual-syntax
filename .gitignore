@@ -11,13 +11,12 @@ unimorph/
 urd/
 results/
 ara/
-obj_rel_across_anim/
-obj_rel_across_anim_2/
 mink-plus-plus/
 plots/ 
 results/
 observations/
-simple_agreement/
+previous_results/
+
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo
