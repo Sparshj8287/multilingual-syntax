@@ -4,9 +4,9 @@ model:
 
 dataset:
   data_root: ../data/data_generators/templates/data
-  dataset_name: obj_rel_across_anim
+  dataset_name: obj_rel_across_anim_2
   variation: linear
-  NUA: [1, 2, 3, 4, 5, 6]
+  NUA: [1, 2]
   train_split_dir: train
   test_split_dir: test
   file_name_template: "{dataset_name}_pairs_{variation}_{nua}.jsonl"
@@ -31,8 +31,11 @@ intervention:
   intervene_direction: source_to_base  
 training:
   seed: 42
-  batch_size: 512
-  eval_batch_size: 512
+  # Base batch sizes used for 1 attractor (NUA=1).
+  # For NUA=n, script uses: floor(base_batch_size / 2^(n-1)).
+  batch_size: 620
+  eval_batch_size: 620
+  min_batch_size: 1
   epochs: 3
   gradient_accumulation_steps: 1
   lr_rotate: 1.0e-3

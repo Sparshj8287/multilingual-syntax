@@ -345,6 +345,21 @@ def normalize_nua_values(raw_value: Any) -> list[int]:
     raise ValueError(f"Unsupported dataset.NUA value: {raw_value}")
 
 
+def get_auto_halved_batch_size(
+    base_batch_size: int,
+    nua: int,
+    *,
+    min_batch_size: int = 1,
+) -> int:
+    """Halve batch size as attractor count (NUA) increases."""
+    if base_batch_size <= 0:
+        raise ValueError("training.batch_size and training.eval_batch_size must be > 0.")
+    if nua <= 0:
+        raise ValueError("NUA values must be positive integers.")
+    halving_steps = max(0, nua - 1)
+    return max(min_batch_size, base_batch_size // (2 ** halving_steps))
+
+
 def build_dataset_run_specs(
     dataset_cfg: dict[str, Any],
     config_dir: Path,
@@ -1016,21 +1031,39 @@ def main() -> None:
             pad_id=pad_id,
             intervene_direction=intervene_direction,
         )
+        base_train_batch_size = int(training_cfg.get("batch_size", 16))
+        base_eval_batch_size = int(training_cfg.get("eval_batch_size", 16))
+        min_batch_size = int(training_cfg.get("min_batch_size", 1))
+        current_train_batch_size = get_auto_halved_batch_size(
+            base_train_batch_size,
+            nua,
+            min_batch_size=min_batch_size,
+        )
+        current_eval_batch_size = get_auto_halved_batch_size(
+            base_eval_batch_size,
+            nua,
+            min_batch_size=min_batch_size,
+        )
+        print(
+            f"[batch][nua={nua}] train_bs={current_train_batch_size} "
+            f"eval_bs={current_eval_batch_size} "
+            f"(base_train_bs={base_train_batch_size}, base_eval_bs={base_eval_batch_size})"
+        )
         train_dataloader = DataLoader(
             train_examples,
-            batch_size=int(training_cfg.get("batch_size", 16)),
+            batch_size=current_train_batch_size,
             shuffle=True,
             collate_fn=collate_fn,
         )
         val_dataloader = DataLoader(
             val_examples,
-            batch_size=int(training_cfg.get("eval_batch_size", 16)),
+            batch_size=current_eval_batch_size,
             shuffle=False,
             collate_fn=collate_fn,
         )
         test_dataloader = DataLoader(
             test_examples,
-            batch_size=int(training_cfg.get("eval_batch_size", 16)),
+            batch_size=current_eval_batch_size,
             shuffle=False,
             collate_fn=collate_fn,
         )
@@ -1255,8 +1288,11 @@ def main() -> None:
                 "training": {
                     "seed": train_seed,
                     "epochs": int(training_cfg.get("epochs", 3)),
-                    "batch_size": int(training_cfg.get("batch_size", 16)),
-                    "eval_batch_size": int(training_cfg.get("eval_batch_size", 16)),
+                    "batch_size": current_train_batch_size,
+                    "eval_batch_size": current_eval_batch_size,
+                    "base_batch_size": base_train_batch_size,
+                    "base_eval_batch_size": base_eval_batch_size,
+                    "batch_size_schedule": "half_per_nua_increment",
                     "gradient_accumulation_steps": int(
                         training_cfg.get("gradient_accumulation_steps", 1)
                     ),
