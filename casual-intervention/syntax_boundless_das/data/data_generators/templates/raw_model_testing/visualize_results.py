@@ -55,14 +55,21 @@ def parse_results(results_dir):
                         base_acc = float(base_match.group(1))
                         source_acc = float(source_match.group(1))
 
-                        avg_acc = (base_acc + source_acc) / 2.0
-                        
                         data.append({
                             'model': model_name,
                             'dataset': dataset_name,
                             'variation': variation_name,
                             'attractor': attractor_n,
-                            'accuracy': avg_acc
+                            'accuracy': base_acc,
+                            'acc_type': 'base'
+                        })
+                        data.append({
+                            'model': model_name,
+                            'dataset': dataset_name,
+                            'variation': variation_name,
+                            'attractor': attractor_n,
+                            'accuracy': source_acc,
+                            'acc_type': 'source'
                         })
     return pd.DataFrame(data)
 
@@ -78,23 +85,28 @@ def plot_results(df, output_root):
         
         variations = model_df['variation'].unique()
         for variation in variations:
-            var_df = model_df[model_df['variation'] == variation]
+            var_df = model_df[model_df['variation'] == variation].copy()
+            if var_df.empty:
+                continue
+            
+            # Combine dataset and acc_type for legend
+            var_df['dataset_acc'] = var_df['dataset'] + ' (' + var_df['acc_type'] + ')'
             
             # Pivot data for plotting
-            # index: attractor, columns: dataset, values: accuracy
-            pivot_df = var_df.pivot(index='attractor', columns='dataset', values='accuracy')
+            # index: attractor, columns: dataset_acc, values: accuracy
+            pivot_df = var_df.pivot(index='attractor', columns='dataset_acc', values='accuracy')
             
             # Sort by attractor number
             pivot_df = pivot_df.sort_index()
             
-            plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(12, 6))
             pivot_df.plot(kind='bar', ax=plt.gca())
             
             plt.title(f"Model: {model} | Variation: {variation}")
             plt.xlabel("Number of Attractors")
-            plt.ylabel("Average Accuracy (Base & Source)")
+            plt.ylabel("Accuracy")
             plt.ylim(0, 1.05)
-            plt.legend(title="Dataset", bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.legend(title="Dataset (Type)", bbox_to_anchor=(1.05, 1), loc='upper left')
             plt.grid(axis='y', linestyle='--', alpha=0.7)
             plt.tight_layout()
             

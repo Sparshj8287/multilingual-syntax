@@ -1,12 +1,12 @@
 model:
-  name: qwen-3-8b
-  path: Qwen/Qwen3-8B-Base
+  name: gemma-3-12b-pt
+  path: google/gemma-3-12b-pt
 
 dataset:
   data_root: ../data/data_generators/templates/data
-  dataset_name: obj_rel_across_anim_2
+  dataset_name: obj_rel_across_anim
   variation: linear
-  NUA: [1, 2]
+  NUA: [1,2,3,4]
   train_split_dir: train
   test_split_dir: test
   file_name_template: "{dataset_name}_pairs_{variation}_{nua}.jsonl"
@@ -25,16 +25,16 @@ runtime:
 
 intervention:
 
-  layer: [0,5,10,15,20,25,30,35]
+  layer: [0,5,10,15,20,25,30,35,40,45]
   component: block_output
   unit: pos
-  intervene_direction: source_to_base  
+  intervene_direction: base_to_source  
 training:
   seed: 42
   # Base batch sizes used for 1 attractor (NUA=1).
   # For NUA=n, script uses: floor(base_batch_size / 2^(n-1)).
-  batch_size: 620
-  eval_batch_size: 620
+  batch_size: 384
+  eval_batch_size: 384
   min_batch_size: 1
   epochs: 3
   gradient_accumulation_steps: 1
