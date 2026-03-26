@@ -28,6 +28,8 @@ intervention:
   layer: [0,5,10,15,20,25,30,35,40,45]
   component: block_output
   unit: pos
+  # Used by train_multi_boundless_das.py: fixed number of rotated dimensions.
+  num_dim: 1
   intervene_direction: base_to_source  
 training:
   seed: 42
