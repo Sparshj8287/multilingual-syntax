@@ -1,0 +1,606 @@
+Detailed 50-sample logs BEFORE training
+Direction: source_to_base
+NUA: 1
+Layer: 5
+method: DBM
+Logit index 0 = target correct verb, index 1 = wrong verb
+
+=== Sample 1 ===
+row_idx: 1021
+main_prefix: The consul that the practitioners incorporate 
+source_prefix: The consuls that the practitioner incorporates 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -0.09765625
+raw_wrong_logit: 1.14843750
+renorm_target_prob: 0.22363281
+renorm_wrong_prob: 0.77734375
+correct: False
+
+=== Sample 2 ===
+row_idx: 598
+main_prefix: The contemporary that the solicitors batch 
+source_prefix: The contemporaries that the solicitor batches 
+target_word: coordinates (id=56220)
+wrong_word: coordinate (id=48114)
+raw_target_logit: -0.61718750
+raw_wrong_logit: 1.05468750
+renorm_target_prob: 0.15820312
+renorm_wrong_prob: 0.84375000
+correct: False
+
+=== Sample 3 ===
+row_idx: 1454
+main_prefix: The recipient whom the curators reconcile 
+source_prefix: The recipients whom the curator reconciles 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -0.16992188
+raw_wrong_logit: -0.14160156
+renorm_target_prob: 0.49218750
+renorm_wrong_prob: 0.50781250
+correct: False
+
+=== Sample 4 ===
+row_idx: 225
+main_prefix: The solicitor whom the plaintiffs incorporate 
+source_prefix: The solicitors whom the plaintiff incorporates 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -1.36718750
+raw_wrong_logit: -0.38671875
+renorm_target_prob: 0.27343750
+renorm_wrong_prob: 0.72656250
+correct: False
+
+=== Sample 5 ===
+row_idx: 1354
+main_prefix: The judiciary whom the constituents educate 
+source_prefix: The judiciaries whom the constituent educates 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: -0.16210938
+raw_wrong_logit: -0.15332031
+renorm_target_prob: 0.49804688
+renorm_wrong_prob: 0.50390625
+correct: False
+
+=== Sample 6 ===
+row_idx: 1226
+main_prefix: The messiah whom the cartels convert 
+source_prefix: The messiahs whom the cartel converts 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -1.97656250
+raw_wrong_logit: -2.53125000
+renorm_target_prob: 0.63671875
+renorm_wrong_prob: 0.36523438
+correct: True
+
+=== Sample 7 ===
+row_idx: 2004
+main_prefix: The hogan that the wolves alter 
+source_prefix: The hogans that the wolf alters 
+target_word: patches (id=104648)
+wrong_word: patch (id=10517)
+raw_target_logit: -2.04687500
+raw_wrong_logit: 0.18945312
+renorm_target_prob: 0.09667969
+renorm_wrong_prob: 0.90234375
+correct: False
+
+=== Sample 8 ===
+row_idx: 1607
+main_prefix: The paradox that the ambassadors nominate 
+source_prefix: The paradoxes that the ambassador nominates 
+target_word: defines (id=163142)
+wrong_word: define (id=9740)
+raw_target_logit: 3.28125000
+raw_wrong_logit: 1.47656250
+renorm_target_prob: 0.85937500
+renorm_wrong_prob: 0.14160156
+correct: True
+
+=== Sample 9 ===
+row_idx: 1203
+main_prefix: The counterpart who the predecessors burden 
+source_prefix: The counterparts who the predecessor burdens 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -2.35937500
+raw_wrong_logit: -2.46875000
+renorm_target_prob: 0.52734375
+renorm_wrong_prob: 0.47265625
+correct: True
+
+=== Sample 10 ===
+row_idx: 696
+main_prefix: The skinner whom the protagonists withstand 
+source_prefix: The skinners whom the protagonist withstands 
+target_word: transforms (id=71508)
+wrong_word: transform (id=10254)
+raw_target_logit: -0.91015625
+raw_wrong_logit: 0.29687500
+renorm_target_prob: 0.23046875
+renorm_wrong_prob: 0.76953125
+correct: False
+
+=== Sample 11 ===
+row_idx: 1970
+main_prefix: The deficit that the burgesses eliminate 
+source_prefix: The deficits that the burgess eliminates 
+target_word: renders (id=118334)
+wrong_word: render (id=9410)
+raw_target_logit: 3.51562500
+raw_wrong_logit: 0.06079102
+renorm_target_prob: 0.96875000
+renorm_wrong_prob: 0.03063965
+correct: True
+
+=== Sample 12 ===
+row_idx: 1939
+main_prefix: The intensity that the chancellors cox 
+source_prefix: The intensities that the chancellor coxes 
+target_word: defines (id=163142)
+wrong_word: define (id=9740)
+raw_target_logit: 2.03125000
+raw_wrong_logit: 0.25195312
+renorm_target_prob: 0.85546875
+renorm_wrong_prob: 0.14453125
+correct: True
+
+=== Sample 13 ===
+row_idx: 702
+main_prefix: The defendant whom the legislatures subset 
+source_prefix: The defendants whom the legislature subsets 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -1.10156250
+raw_wrong_logit: -0.64453125
+renorm_target_prob: 0.38671875
+renorm_wrong_prob: 0.61328125
+correct: False
+
+=== Sample 14 ===
+row_idx: 1304
+main_prefix: The solicitor who the philosophers illustrate 
+source_prefix: The solicitors who the philosopher illustrates 
+target_word: defines (id=163142)
+wrong_word: define (id=9740)
+raw_target_logit: 3.62500000
+raw_wrong_logit: 1.73437500
+renorm_target_prob: 0.86718750
+renorm_wrong_prob: 0.13085938
+correct: True
+
+=== Sample 15 ===
+row_idx: 2564
+main_prefix: The catalyst that the incumbents cloak 
+source_prefix: The catalysts that the incumbent cloaks 
+target_word: profiles (id=106790)
+wrong_word: profile (id=13330)
+raw_target_logit: 1.18750000
+raw_wrong_logit: 0.03369141
+renorm_target_prob: 0.76171875
+renorm_wrong_prob: 0.24023438
+correct: True
+
+=== Sample 16 ===
+row_idx: 703
+main_prefix: The man that the organisms fate 
+source_prefix: The men that the organism fates 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: 1.65625000
+raw_wrong_logit: 0.26367188
+renorm_target_prob: 0.80078125
+renorm_wrong_prob: 0.19921875
+correct: True
+
+=== Sample 17 ===
+row_idx: 2073
+main_prefix: The stigma that the counterparts rotate 
+source_prefix: The stigmata that the counterpart rotates 
+target_word: profiles (id=106790)
+wrong_word: profile (id=13330)
+raw_target_logit: 1.16406250
+raw_wrong_logit: 1.10156250
+renorm_target_prob: 0.51562500
+renorm_wrong_prob: 0.48437500
+correct: True
+
+=== Sample 18 ===
+row_idx: 1989
+main_prefix: The creed that the defendants endorse 
+source_prefix: The creeds that the defendant endorses 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -0.62500000
+raw_wrong_logit: -2.32812500
+renorm_target_prob: 0.84765625
+renorm_wrong_prob: 0.15429688
+correct: True
+
+=== Sample 19 ===
+row_idx: 1149
+main_prefix: The curator who the chancellors confederate 
+source_prefix: The curators who the chancellor confederates 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: -0.35937500
+raw_wrong_logit: -1.43750000
+renorm_target_prob: 0.74609375
+renorm_wrong_prob: 0.25390625
+correct: True
+
+=== Sample 20 ===
+row_idx: 94
+main_prefix: The cartel whom the practitioners rotate 
+source_prefix: The cartels whom the practitioner rotates 
+target_word: coordinates (id=56220)
+wrong_word: coordinate (id=48114)
+raw_target_logit: 0.53125000
+raw_wrong_logit: 0.65625000
+renorm_target_prob: 0.46875000
+renorm_wrong_prob: 0.53125000
+correct: False
+
+=== Sample 21 ===
+row_idx: 266
+main_prefix: The man that the oracles sic 
+source_prefix: The men that the oracle sics 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: -0.91406250
+raw_wrong_logit: -0.66015625
+renorm_target_prob: 0.43750000
+renorm_wrong_prob: 0.56250000
+correct: False
+
+=== Sample 22 ===
+row_idx: 1464
+main_prefix: The practitioner whom the cartels harbour 
+source_prefix: The practitioners whom the cartel harbours 
+target_word: renders (id=118334)
+wrong_word: render (id=9410)
+raw_target_logit: 4.75000000
+raw_wrong_logit: 0.29492188
+renorm_target_prob: 0.98828125
+renorm_wrong_prob: 0.01147461
+correct: True
+
+=== Sample 23 ===
+row_idx: 1048
+main_prefix: The incumbent who the philosophers pan 
+source_prefix: The incumbents who the philosopher pans 
+target_word: quests (id=169121)
+wrong_word: quest (id=2860)
+raw_target_logit: 1.45312500
+raw_wrong_logit: 0.23046875
+renorm_target_prob: 0.77343750
+renorm_wrong_prob: 0.22753906
+correct: True
+
+=== Sample 24 ===
+row_idx: 1745
+main_prefix: The observatory that the skinners fate 
+source_prefix: The observatories that the skinner fates 
+target_word: registers (id=189500)
+wrong_word: register (id=12884)
+raw_target_logit: -1.81250000
+raw_wrong_logit: 0.28515625
+renorm_target_prob: 0.10937500
+renorm_wrong_prob: 0.89062500
+correct: False
+
+=== Sample 25 ===
+row_idx: 2926
+main_prefix: The catastrophe that the sages overthrow 
+source_prefix: The catastrophes that the sage overthrows 
+target_word: renders (id=118334)
+wrong_word: render (id=9410)
+raw_target_logit: 2.26562500
+raw_wrong_logit: -0.65625000
+renorm_target_prob: 0.94921875
+renorm_wrong_prob: 0.05102539
+correct: True
+
+=== Sample 26 ===
+row_idx: 2377
+main_prefix: The creed that the curators reconcile 
+source_prefix: The creeds that the curator reconciles 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -1.38281250
+raw_wrong_logit: -0.92187500
+renorm_target_prob: 0.38671875
+renorm_wrong_prob: 0.61328125
+correct: False
+
+=== Sample 27 ===
+row_idx: 1921
+main_prefix: The catastrophe that the chairmen coordinate 
+source_prefix: The catastrophes that the chairman coordinates 
+target_word: tokens (id=31846)
+wrong_word: token (id=1114)
+raw_target_logit: -1.14062500
+raw_wrong_logit: -1.94531250
+renorm_target_prob: 0.69140625
+renorm_wrong_prob: 0.30859375
+correct: True
+
+=== Sample 28 ===
+row_idx: 2117
+main_prefix: The quarry that the burgesses incorporate 
+source_prefix: The quarries that the burgess incorporates 
+target_word: patches (id=104648)
+wrong_word: patch (id=10517)
+raw_target_logit: -3.00000000
+raw_wrong_logit: -1.74218750
+renorm_target_prob: 0.22167969
+renorm_wrong_prob: 0.77734375
+correct: False
+
+=== Sample 29 ===
+row_idx: 877
+main_prefix: The superintendent whom the messiahs induce 
+source_prefix: The superintendents whom the messiah induces 
+target_word: patches (id=104648)
+wrong_word: patch (id=10517)
+raw_target_logit: -3.35937500
+raw_wrong_logit: -1.73437500
+renorm_target_prob: 0.16406250
+renorm_wrong_prob: 0.83593750
+correct: False
+
+=== Sample 30 ===
+row_idx: 841
+main_prefix: The messiah that the chairmen stat 
+source_prefix: The messiahs that the chairman stats 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: 0.20996094
+raw_wrong_logit: -0.89062500
+renorm_target_prob: 0.75000000
+renorm_wrong_prob: 0.25000000
+correct: True
+
+=== Sample 31 ===
+row_idx: 832
+main_prefix: The mouse that the sawyers clone 
+source_prefix: The mice that the sawyer clones 
+target_word: registers (id=189500)
+wrong_word: register (id=12884)
+raw_target_logit: 0.35742188
+raw_wrong_logit: -0.05200195
+renorm_target_prob: 0.60156250
+renorm_wrong_prob: 0.39843750
+correct: True
+
+=== Sample 32 ===
+row_idx: 1849
+main_prefix: The opposition that the proxies fell 
+source_prefix: The oppositions that the proxy fells 
+target_word: renders (id=118334)
+wrong_word: render (id=9410)
+raw_target_logit: 3.21875000
+raw_wrong_logit: 0.35742188
+renorm_target_prob: 0.94531250
+renorm_wrong_prob: 0.05419922
+correct: True
+
+=== Sample 33 ===
+row_idx: 428
+main_prefix: The constituent whom the messiahs rack 
+source_prefix: The constituents whom the messiah racks 
+target_word: objects (id=25487)
+wrong_word: object (id=5973)
+raw_target_logit: -0.04272461
+raw_wrong_logit: 0.94140625
+renorm_target_prob: 0.27148438
+renorm_wrong_prob: 0.72656250
+correct: False
+
+=== Sample 34 ===
+row_idx: 582
+main_prefix: The legislature who the psychologists fate 
+source_prefix: The legislatures who the psychologist fates 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: 1.43750000
+raw_wrong_logit: 1.08593750
+renorm_target_prob: 0.58593750
+renorm_wrong_prob: 0.41210938
+correct: True
+
+=== Sample 35 ===
+row_idx: 106
+main_prefix: The legislature that the chancellors tolerate 
+source_prefix: The legislatures that the chancellor tolerates 
+target_word: registers (id=189500)
+wrong_word: register (id=12884)
+raw_target_logit: -0.02758789
+raw_wrong_logit: -0.18164062
+renorm_target_prob: 0.53906250
+renorm_wrong_prob: 0.46093750
+correct: True
+
+=== Sample 36 ===
+row_idx: 1310
+main_prefix: The recipient that the sages utilize 
+source_prefix: The recipients that the sage utilizes 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: -0.25390625
+raw_wrong_logit: -0.93750000
+renorm_target_prob: 0.66406250
+renorm_wrong_prob: 0.33593750
+correct: True
+
+=== Sample 37 ===
+row_idx: 2537
+main_prefix: The decree that the men burden 
+source_prefix: The decrees that the man burdens 
+target_word: profiles (id=106790)
+wrong_word: profile (id=13330)
+raw_target_logit: -0.99609375
+raw_wrong_logit: -1.93750000
+renorm_target_prob: 0.71875000
+renorm_wrong_prob: 0.28125000
+correct: True
+
+=== Sample 38 ===
+row_idx: 2224
+main_prefix: The observatory that the hinds harbour 
+source_prefix: The observatories that the hind harbours 
+target_word: tokens (id=31846)
+wrong_word: token (id=1114)
+raw_target_logit: -1.76562500
+raw_wrong_logit: -2.06250000
+renorm_target_prob: 0.57421875
+renorm_wrong_prob: 0.42578125
+correct: True
+
+=== Sample 39 ===
+row_idx: 1581
+main_prefix: The semiconductor that the shahs regulate 
+source_prefix: The semiconductors that the shah regulates 
+target_word: coordinates (id=56220)
+wrong_word: coordinate (id=48114)
+raw_target_logit: -0.62500000
+raw_wrong_logit: 0.68359375
+renorm_target_prob: 0.21289062
+renorm_wrong_prob: 0.78906250
+correct: False
+
+=== Sample 40 ===
+row_idx: 2176
+main_prefix: The hierarchy that the consuls assess 
+source_prefix: The hierarchies that the consul assesses 
+target_word: transforms (id=71508)
+wrong_word: transform (id=10254)
+raw_target_logit: -0.91796875
+raw_wrong_logit: -0.00349426
+renorm_target_prob: 0.28515625
+renorm_wrong_prob: 0.71484375
+correct: False
+
+=== Sample 41 ===
+row_idx: 393
+main_prefix: The oracle who the chandlers supplement 
+source_prefix: The oracles who the chandler supplements 
+target_word: coordinates (id=56220)
+wrong_word: coordinate (id=48114)
+raw_target_logit: -0.96093750
+raw_wrong_logit: 0.15722656
+renorm_target_prob: 0.24609375
+renorm_wrong_prob: 0.75390625
+correct: False
+
+=== Sample 42 ===
+row_idx: 713
+main_prefix: The practitioner who the khans sic 
+source_prefix: The practitioners who the khan sics 
+target_word: coordinates (id=56220)
+wrong_word: coordinate (id=48114)
+raw_target_logit: -1.28906250
+raw_wrong_logit: -0.72265625
+renorm_target_prob: 0.36132812
+renorm_wrong_prob: 0.63671875
+correct: False
+
+=== Sample 43 ===
+row_idx: 1376
+main_prefix: The revolutionary who the wolves parachute 
+source_prefix: The revolutionaries who the wolf parachutes 
+target_word: registers (id=189500)
+wrong_word: register (id=12884)
+raw_target_logit: -1.12500000
+raw_wrong_logit: -0.65234375
+renorm_target_prob: 0.38476562
+renorm_wrong_prob: 0.61718750
+correct: False
+
+=== Sample 44 ===
+row_idx: 2322
+main_prefix: The onset that the constituents towel 
+source_prefix: The onsets that the constituent towels 
+target_word: transforms (id=71508)
+wrong_word: transform (id=10254)
+raw_target_logit: -0.45312500
+raw_wrong_logit: 0.36718750
+renorm_target_prob: 0.30664062
+renorm_wrong_prob: 0.69531250
+correct: False
+
+=== Sample 45 ===
+row_idx: 1706
+main_prefix: The occurrence that the ambassadors overthrow 
+source_prefix: The occurrences that the ambassador overthrows 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: -1.14062500
+raw_wrong_logit: -1.54687500
+renorm_target_prob: 0.60156250
+renorm_wrong_prob: 0.40039062
+correct: True
+
+=== Sample 46 ===
+row_idx: 101
+main_prefix: The constituent that the authoritarians sic 
+source_prefix: The constituents that the authoritarian sics 
+target_word: expires (id=126452)
+wrong_word: expire (id=129980)
+raw_target_logit: -0.64062500
+raw_wrong_logit: -0.50390625
+renorm_target_prob: 0.46679688
+renorm_wrong_prob: 0.53515625
+correct: False
+
+=== Sample 47 ===
+row_idx: 191
+main_prefix: The chancellor whom the incumbents modify 
+source_prefix: The chancellors whom the incumbent modifies 
+target_word: quests (id=169121)
+wrong_word: quest (id=2860)
+raw_target_logit: 0.85156250
+raw_wrong_logit: -0.68359375
+renorm_target_prob: 0.82421875
+renorm_wrong_prob: 0.17675781
+correct: True
+
+=== Sample 48 ===
+row_idx: 2258
+main_prefix: The deficit that the constituents modify 
+source_prefix: The deficits that the constituent modifies 
+target_word: requires (id=68717)
+wrong_word: require (id=11106)
+raw_target_logit: 3.40625000
+raw_wrong_logit: 1.86718750
+renorm_target_prob: 0.82421875
+renorm_wrong_prob: 0.17675781
+correct: True
+
+=== Sample 49 ===
+row_idx: 2835
+main_prefix: The stigma that the affiliates analyze 
+source_prefix: The stigmata that the affiliate analyzes 
+target_word: inputs (id=22715)
+wrong_word: input (id=2427)
+raw_target_logit: -1.01562500
+raw_wrong_logit: 0.26367188
+renorm_target_prob: 0.21777344
+renorm_wrong_prob: 0.78125000
+correct: False
+
+=== Sample 50 ===
+row_idx: 1524
+main_prefix: The paradigm that the curators rotate 
+source_prefix: The paradigms that the curator rotates 
+target_word: requires (id=68717)
+wrong_word: require (id=11106)
+raw_target_logit: 3.96875000
+raw_wrong_logit: 0.98046875
+renorm_target_prob: 0.95312500
+renorm_wrong_prob: 0.04785156
+correct: True

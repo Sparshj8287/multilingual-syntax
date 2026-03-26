@@ -17,7 +17,7 @@ results/
 observations/
 previous_results/
 causalgym/
-
+ravel/
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo

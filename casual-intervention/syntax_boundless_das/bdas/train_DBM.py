@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+import argparse
 import json
 import os
 import random
@@ -8,70 +10,132 @@ import torch
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
+from transformers import get_scheduler
 
 import train_boundless_das as base
 
-from pyvene import (  
+from pyvene import (  # noqa: E402
     IntervenableConfig,
     IntervenableModel,
     RepresentationConfig,
     count_parameters,
     set_seed,
 )
-from pyvene.models.interventions import (  
+from pyvene.models.interventions import (  # noqa: E402
     DistributedRepresentationIntervention,
     TrainableIntervention,
 )
-from pyvene.models.layers import RotateLayer  
 
 
-class FixedMaskRotatedSpaceIntervention(
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Train Differential Binary Masking (DBM) intervention."
+    )
+    parser.add_argument(
+        "--config",
+        default=str(Path(__file__).resolve().parent / "config.yaml"),
+        help="Path to YAML config.",
+    )
+    return parser.parse_args()
+
+
+def _as_intervention(module_or_list: Any):
+    if isinstance(module_or_list, (list, tuple)):
+        return module_or_list[0]
+    return module_or_list
+
+
+class DifferentialBinaryMaskingIntervention(
     TrainableIntervention, DistributedRepresentationIntervention
 ):
-    """
-    Boundless-style rotated intervention with a fixed hard mask.
 
-    Instead of learning a continuous boundary, this intervention always uses
-    exactly `num_dim` dimensions in the rotated space.
-    """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        rotate_layer = RotateLayer(self.embed_dim)
-        self.rotate_layer = torch.nn.utils.parametrizations.orthogonal(rotate_layer)
-
-        num_dim = int(kwargs.get("low_rank_dimension", 1))
         embed_dim = int(self.embed_dim)
-        if num_dim <= 0 or num_dim > embed_dim:
-            raise ValueError(
-                f"`num_dim` must be in [1, {embed_dim}], got {num_dim}."
-            )
-        self.register_buffer("num_dim", torch.tensor(num_dim))
 
-        fixed_mask = torch.zeros(embed_dim, dtype=torch.float32)
-        fixed_mask[:num_dim] = 1.0
-        self.register_buffer("fixed_mask", fixed_mask)
+        self.mask = torch.nn.Parameter(torch.zeros(embed_dim), requires_grad=True)
+        self.temperature = torch.nn.Parameter(torch.tensor(1e-2))
+
+        # DBM uses identity featurizer (frozen linear layer).
+        self.rotate_layer = torch.nn.Linear(embed_dim, embed_dim, bias=False)
+        self.rotate_layer.weight.requires_grad = False
+        with torch.no_grad():
+            self.rotate_layer.weight.copy_(torch.eye(embed_dim))
+
+    def get_temperature(self):
+        return self.temperature
+
+    def set_temperature(self, temp: torch.Tensor):
+        self.temperature.data = temp
+
+    def get_sparsity_loss(self):
+        mask_sigmoid = torch.sigmoid(self.mask / torch.tensor(self.temperature))
+        return torch.norm(mask_sigmoid, p=1)
 
     def forward(self, base, source, subspaces=None, **kwargs):
-        rotated_base = self.rotate_layer(base)
-        rotated_source = self.rotate_layer(source)
+        input_dtype, model_dtype = base.dtype, self.mask.dtype
+        base, source = base.to(model_dtype), source.to(model_dtype)
+        batch_size = base.shape[0]
 
+        if self.training:
+            mask_sigmoid = torch.sigmoid(self.mask / torch.tensor(self.temperature))
+            # Persist selected features as rotate matrix for eval mode.
+            with torch.no_grad():
+                if torch.any(mask_sigmoid > 0.5):
+                    rotate_matrix = torch.masked_select(
+                        torch.eye(int(self.embed_dim), device=base.device),
+                        (mask_sigmoid > 0.5).view([-1, 1]),
+                    ).view([-1, int(self.embed_dim)])
+                    self.rotate_layer = torch.nn.Linear(
+                        int(self.embed_dim),
+                        rotate_matrix.shape[0],
+                        bias=False,
+                        device=base.device,
+                    )
+                    self.rotate_layer.weight.copy_(rotate_matrix)
+            mask_sigmoid = (
+                torch.ones(batch_size, device=base.device).unsqueeze(-1) * mask_sigmoid
+            )
+            output = (1.0 - mask_sigmoid) * base + mask_sigmoid * source
+        else:
+            rotated_base = self.rotate_layer(base)
+            rotated_source = self.rotate_layer(source)
+            output = base + torch.matmul(
+                (rotated_source - rotated_base), self.rotate_layer.weight
+            )
 
-        mask = self.fixed_mask.to(rotated_base.dtype)
-        mask_view = mask.view(*([1] * (rotated_base.dim() - 1)), -1)
-        masked_diff = (rotated_source - rotated_base) * mask_view
-
-        output = base + torch.matmul(masked_diff, self.rotate_layer.weight.T)
-        return output.to(base.dtype)
+        return output.to(input_dtype)
 
     def __str__(self):
-        return f"FixedMaskRotatedSpaceIntervention(num_dim={int(self.num_dim)})"
+        return "DifferentialBinaryMaskingIntervention()"
 
 
-def compute_targeted_loss(pair_logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def compute_targeted_loss(
+    intervenable: IntervenableModel,
+    pair_logits: torch.Tensor,
+    regularization_coefficient: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     labels = torch.zeros(pair_logits.shape[0], dtype=torch.long, device=pair_logits.device)
     ce_loss = CrossEntropyLoss()(pair_logits, labels)
-    return ce_loss, ce_loss
+
+    sparsity_loss = torch.zeros((), device=pair_logits.device)
+    for _, intervention_obj in intervenable.interventions.items():
+        intervention = _as_intervention(intervention_obj)
+        if isinstance(intervention, DifferentialBinaryMaskingIntervention):
+            sparsity_loss = sparsity_loss + intervention.get_sparsity_loss()
+
+    total_loss = ce_loss + regularization_coefficient * sparsity_loss
+    return total_loss, ce_loss, sparsity_loss
+
+
+def _set_dbm_temperature(
+    intervenable: IntervenableModel, temperature: torch.Tensor
+) -> None:
+    for _, intervention_obj in intervenable.interventions.items():
+        intervention = _as_intervention(intervention_obj)
+        if isinstance(intervention, DifferentialBinaryMaskingIntervention):
+            intervention.set_temperature(temperature)
 
 
 def train(
@@ -86,29 +150,41 @@ def train(
 ) -> list[dict[str, Any]]:
     epochs = int(training_cfg.get("epochs", 3))
     gradient_accumulation_steps = int(training_cfg.get("gradient_accumulation_steps", 1))
-    lr_rotate = float(training_cfg.get("lr_rotate", 1.0e-3))
-    warmup_ratio = float(training_cfg.get("warmup_ratio", 0.1))
+    init_lr = float(training_cfg.get("init_lr", 1.0e-4))
+    regularization_coefficient = float(training_cfg.get("regularization_coefficient", 0.0))
+    temperature_schedule = training_cfg.get("temperature_schedule", [1.0e-2, 1.0e-2])
     log_every_steps = int(training_cfg.get("log_every_steps", 20))
 
+    if not isinstance(temperature_schedule, (list, tuple)) or len(temperature_schedule) != 2:
+        raise ValueError(
+            "training.temperature_schedule must be a two-element list: [start, end]"
+        )
+    temperature_start, temperature_end = map(float, temperature_schedule)
+
     total_train_steps = max(1, len(train_dataloader) * epochs)
-    warmup_steps = int(warmup_ratio * total_train_steps)
 
     optimizer_params = []
-    for _, intervention in intervenable.interventions.items():
-        optimizer_params.append(
-            {"params": intervention.rotate_layer.parameters(), "lr": lr_rotate}
-        )
-    optimizer = torch.optim.Adam(optimizer_params, lr=lr_rotate)
-    scheduler = base.get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=warmup_steps,
-        num_training_steps=total_train_steps,
+    for _, intervention_obj in intervenable.interventions.items():
+        intervention = _as_intervention(intervention_obj)
+        if isinstance(intervention, DifferentialBinaryMaskingIntervention):
+            optimizer_params.append({"params": intervention.parameters()})
+    optimizer = torch.optim.AdamW(optimizer_params, lr=init_lr, weight_decay=0.0)
+    scheduler = get_scheduler(
+        "constant", optimizer=optimizer, num_training_steps=total_train_steps
     )
 
+    temp_schedule = torch.linspace(
+        temperature_start, temperature_end, total_train_steps + 1, device=device
+    )
+    if device.type == "cuda":
+        temp_schedule = temp_schedule.to(torch.bfloat16)
+
     intervenable.set_zero_grad()
+    _set_dbm_temperature(intervenable, temp_schedule[0])
     intervenable.model.train()
 
     history: list[dict[str, Any]] = []
+    global_step = 0
     for epoch in trange(epochs, desc="Epoch"):
         epoch_total = 0
         epoch_correct = 0
@@ -120,9 +196,14 @@ def train(
             leave=True,
         )
         for step, batch in enumerate(progress):
+            temp_idx = min(global_step, total_train_steps)
+            _set_dbm_temperature(intervenable, temp_schedule[temp_idx])
+
             batch = base.move_batch_to_device(batch, device)
             pair_logits = base.forward_intervened_pair_logits(intervenable, batch)
-            total_loss, ce_loss = compute_targeted_loss(pair_logits)
+            total_loss, ce_loss, sparsity_loss = compute_targeted_loss(
+                intervenable, pair_logits, regularization_coefficient
+            )
 
             batch_size = pair_logits.shape[0]
             margins = pair_logits[:, 0] - pair_logits[:, 1]
@@ -148,8 +229,11 @@ def train(
                 progress.set_postfix(
                     loss=f"{total_loss.item():.4f}",
                     ce=f"{ce_loss.item():.4f}",
+                    sparsity=f"{sparsity_loss.item():.4f}",
                     acc=f"{batch_acc:.4f}",
                 )
+
+            global_step += 1
 
         train_accuracy = epoch_correct / epoch_total if epoch_total else 0.0
         train_loss = epoch_loss_sum / epoch_total if epoch_total else 0.0
@@ -198,7 +282,7 @@ def train(
 
 
 def main() -> None:
-    args = base.parse_args()
+    args = parse_args()
     config_path = Path(args.config).resolve()
     config = base.load_yaml(config_path)
     config_dir = config_path.parent
@@ -222,10 +306,6 @@ def main() -> None:
         raise ValueError(
             "intervene_direction must be 'source_to_base' or 'base_to_source'."
         )
-
-    num_dim = int(intervention_cfg.get("num_dim", 1))
-    if num_dim <= 0:
-        raise ValueError("intervention.num_dim must be a positive integer.")
 
     split_seed = int(dataset_cfg.get("shuffle_seed", 42))
     train_size_value = dataset_cfg.get("train_size", None)
@@ -255,7 +335,7 @@ def main() -> None:
         f"[data] dataset={dataset_name} variation={variation} "
         f"nua_values={[run['nua'] for run in dataset_runs]}"
     )
-    print(f"[setup] intervene_direction={intervene_direction}, num_dim={num_dim}")
+    print(f"[setup] intervene_direction={intervene_direction} (DBM)")
 
     pad_id = model.generation_config.pad_token_id
     if pad_id is None:
@@ -401,10 +481,9 @@ def main() -> None:
                         component=component,
                         unit=unit,
                         max_number_of_units=1,
-                        low_rank_dimension=num_dim,
                     )
                 ],
-                intervention_types=FixedMaskRotatedSpaceIntervention,
+                intervention_types=DifferentialBinaryMaskingIntervention,
             )
             intervenable = IntervenableModel(intervenable_config, model)
             intervenable.disable_model_gradients()
@@ -428,7 +507,7 @@ def main() -> None:
                 f"Direction: {intervene_direction}\n"
                 f"NUA: {nua}\n"
                 f"Layer: {layer}\n"
-                f"num_dim: {num_dim}\n"
+                "method: DBM\n"
                 "Logit index 0 = target correct verb, index 1 = wrong verb"
             )
             before_text = base.build_50_sample_logs(
@@ -459,7 +538,7 @@ def main() -> None:
                     f"Direction: {intervene_direction}\n"
                     f"NUA: {nua}\n"
                     f"Layer: {layer}\n"
-                    f"num_dim: {num_dim}\n"
+                    "method: DBM\n"
                     "Logit index 0 = target correct verb, index 1 = wrong verb"
                 )
                 baseline_tracking_samples = base.build_sample_logs(
@@ -499,7 +578,7 @@ def main() -> None:
                     f"Direction: {intervene_direction}\n"
                     f"NUA: {nua}\n"
                     f"Layer: {layer}\n"
-                    f"num_dim: {num_dim}\n"
+                    "method: DBM\n"
                     "Logit index 0 = target correct verb, index 1 = wrong verb"
                 )
                 epoch_samples = base.build_sample_logs(
@@ -545,7 +624,7 @@ def main() -> None:
                 f"Direction: {intervene_direction}\n"
                 f"NUA: {nua}\n"
                 f"Layer: {layer}\n"
-                f"num_dim: {num_dim}\n"
+                "method: DBM\n"
                 "Logit index 0 = target correct verb, index 1 = wrong verb"
             )
             after_text = base.build_50_sample_logs(
@@ -593,8 +672,7 @@ def main() -> None:
                     "component": component,
                     "unit": unit,
                     "position": "last_token_of_prefix",
-                    "num_dim": num_dim,
-                    "mask_type": "hard_fixed",
+                    "method": "dbm",
                 },
                 "training": {
                     "seed": train_seed,
@@ -607,8 +685,13 @@ def main() -> None:
                     "gradient_accumulation_steps": int(
                         training_cfg.get("gradient_accumulation_steps", 1)
                     ),
-                    "lr_rotate": float(training_cfg.get("lr_rotate", 1.0e-3)),
-                    "warmup_ratio": float(training_cfg.get("warmup_ratio", 0.1)),
+                    "init_lr": float(training_cfg.get("init_lr", 1.0e-4)),
+                    "regularization_coefficient": float(
+                        training_cfg.get("regularization_coefficient", 0.0)
+                    ),
+                    "temperature_schedule": training_cfg.get(
+                        "temperature_schedule", [1.0e-2, 1.0e-2]
+                    ),
                     "history": history,
                 },
                 "baseline": {

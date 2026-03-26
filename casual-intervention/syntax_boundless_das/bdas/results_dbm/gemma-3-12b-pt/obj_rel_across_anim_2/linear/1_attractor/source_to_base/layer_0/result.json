@@ -1,0 +1,192 @@
+{
+  "model": {
+    "name": "gemma-3-12b-pt",
+    "path": "google/gemma-3-12b-pt",
+    "output_dir_name": "gemma-3-12b-pt"
+  },
+  "dataset": {
+    "dataset_name": "obj_rel_across_anim_2",
+    "variation": "linear",
+    "nua": 1,
+    "train_path": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/data/data_generators/templates/data/obj_rel_across_anim_2/train/linear/obj_rel_across_anim_2_pairs_linear_1.jsonl",
+    "test_path": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/data/data_generators/templates/data/obj_rel_across_anim_2/test/linear/obj_rel_across_anim_2_pairs_linear_1.jsonl",
+    "train_pool_size": 20000,
+    "train_size": 19000,
+    "val_size": 1000,
+    "test_size": 3000,
+    "shuffle_seed": 42,
+    "sample_row_indices_for_50_logs": [
+      1021,
+      598,
+      1454,
+      225,
+      1354,
+      1226,
+      2004,
+      1607,
+      1203,
+      696,
+      1970,
+      1939,
+      702,
+      1304,
+      2564,
+      703,
+      2073,
+      1989,
+      1149,
+      94,
+      266,
+      1464,
+      1048,
+      1745,
+      2926,
+      2377,
+      1921,
+      2117,
+      877,
+      841,
+      832,
+      1849,
+      428,
+      582,
+      106,
+      1310,
+      2537,
+      2224,
+      1581,
+      2176,
+      393,
+      713,
+      1376,
+      2322,
+      1706,
+      101,
+      191,
+      2258,
+      2835,
+      1524
+    ],
+    "sample_row_indices_for_epoch_tracking_logs": [
+      1483,
+      2832,
+      1069,
+      2223,
+      1215,
+      1113,
+      373,
+      2415,
+      959,
+      1384
+    ]
+  },
+  "intervention": {
+    "direction": "source_to_base",
+    "layer": 0,
+    "component": "block_output",
+    "unit": "pos",
+    "position": "last_token_of_prefix",
+    "method": "dbm"
+  },
+  "training": {
+    "seed": 42,
+    "epochs": 3,
+    "batch_size": 864,
+    "eval_batch_size": 864,
+    "base_batch_size": 864,
+    "base_eval_batch_size": 864,
+    "batch_size_schedule": "half_per_nua_increment",
+    "gradient_accumulation_steps": 1,
+    "init_lr": 0.0001,
+    "regularization_coefficient": 0.001,
+    "temperature_schedule": [
+      0.01,
+      1e-07
+    ],
+    "history": [
+      {
+        "epoch": 1,
+        "train_accuracy": 0.7856315789473685,
+        "train_loss": 2.232452556610107,
+        "val_accuracy": 0.778,
+        "val_targeted_ce_loss": 0.455078125,
+        "val_avg_target_minus_wrong_logit": 1.146,
+        "test_accuracy": 0.5616666666666666,
+        "test_targeted_ce_loss": 0.78965625,
+        "test_avg_target_minus_wrong_logit": 0.304,
+        "test_correct": 1685,
+        "test_total": 3000,
+        "test_ties": 2
+      },
+      {
+        "epoch": 2,
+        "train_accuracy": 0.7859473684210526,
+        "train_loss": 1.707796605310942,
+        "val_accuracy": 0.779,
+        "val_targeted_ce_loss": 0.455078125,
+        "val_avg_target_minus_wrong_logit": 1.146,
+        "test_accuracy": 0.5626666666666666,
+        "test_targeted_ce_loss": 0.78965625,
+        "test_avg_target_minus_wrong_logit": 0.30433333333333334,
+        "test_correct": 1688,
+        "test_total": 3000,
+        "test_ties": 4
+      },
+      {
+        "epoch": 3,
+        "train_accuracy": 0.7861578947368421,
+        "train_loss": 0.6735710322229486,
+        "val_accuracy": 0.776,
+        "val_targeted_ce_loss": 0.453125,
+        "val_avg_target_minus_wrong_logit": 1.146,
+        "test_accuracy": 0.562,
+        "test_targeted_ce_loss": 0.78965625,
+        "test_avg_target_minus_wrong_logit": 0.30416666666666664,
+        "test_correct": 1686,
+        "test_total": 3000,
+        "test_ties": 4
+      }
+    ]
+  },
+  "baseline": {
+    "val": {
+      "total": 1000,
+      "correct": 776,
+      "ties": 4,
+      "accuracy": 0.776,
+      "avg_target_minus_wrong_logit": 1.142,
+      "avg_targeted_ce_loss": 0.4548125
+    },
+    "test": {
+      "total": 3000,
+      "correct": 1682,
+      "ties": 8,
+      "accuracy": 0.5606666666666666,
+      "avg_target_minus_wrong_logit": 0.30366666666666664,
+      "avg_targeted_ce_loss": 0.7901875
+    }
+  },
+  "final": {
+    "val": {
+      "total": 1000,
+      "correct": 776,
+      "ties": 2,
+      "accuracy": 0.776,
+      "avg_target_minus_wrong_logit": 1.146,
+      "avg_targeted_ce_loss": 0.453125
+    },
+    "test": {
+      "total": 3000,
+      "correct": 1686,
+      "ties": 4,
+      "accuracy": 0.562,
+      "avg_target_minus_wrong_logit": 0.30416666666666664,
+      "avg_targeted_ce_loss": 0.78965625
+    }
+  },
+  "artifacts": {
+    "before_training_log": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/results_dbm/gemma-3-12b-pt/obj_rel_across_anim_2/linear/1_attractor/source_to_base/layer_0/50_samples_before_training.txt",
+    "after_training_log": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/results_dbm/gemma-3-12b-pt/obj_rel_across_anim_2/linear/1_attractor/source_to_base/layer_0/50_samples_after_training.txt",
+    "epoch_tracking_log": null
+  }
+}
