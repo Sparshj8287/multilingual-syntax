@@ -18,6 +18,8 @@ observations/
 previous_results/
 causalgym/
 ravel/
+results_dbm/
+plots_dbm/
 
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo

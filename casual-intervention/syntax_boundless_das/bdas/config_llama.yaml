@@ -1,6 +1,6 @@
 model:
-  name: gemma-3-12b-pt
-  path: google/gemma-3-12b-pt
+  name: llama-3.1-8b
+  path: /home/models/Llama-3.1-8B
 
 dataset:
   data_root: ../data/data_generators/templates/data
@@ -25,7 +25,7 @@ runtime:
 
 intervention:
 
-  layer: [0,5,10,15,20,25,30,35,40,45]
+  layer: [0,5,10,15,20,25,30]
   component: block_output
   unit: pos
   # Used by train_multi_boundless_das.py: fixed number of rotated dimensions.
@@ -35,8 +35,8 @@ training:
   seed: 42
   # Base batch sizes used for 1 attractor (NUA=1).
   # For NUA=n, script uses: floor(base_batch_size / 2^(n-1)).
-  batch_size: 864
-  eval_batch_size: 864
+  batch_size: 1280
+  eval_batch_size: 1280
   min_batch_size: 1
   epochs: 3
   gradient_accumulation_steps: 1
@@ -55,7 +55,7 @@ training:
   log_every_steps: 20
 
 output:
-  root_dir: results_dbm
+  root_dir: results
   before_training_log: 50_samples_before_training.txt
   after_training_log: 50_samples_after_training.txt
   epoch_tracking:

@@ -1,0 +1,65 @@
+model:
+  name: qwen-3-8b
+  path: Qwen/Qwen3-8B-Base
+
+dataset:
+  data_root: ../data/data_generators/templates/data
+  dataset_name: obj_rel_across_anim_2
+  variation: bow
+  NUA: [1,2,3,4]
+  train_split_dir: train
+  test_split_dir: test
+  file_name_template: "{dataset_name}_pairs_{variation}_{nua}.jsonl"
+  # train_size can be omitted to use all training rows except validation rows.
+  train_size: 19000
+  val_size: 1000
+  # test_size=0 means use full test file from test_split_dir.
+  test_size: 0
+  shuffle_seed: 42
+
+runtime:
+  device: cuda
+  device_map: auto
+  torch_dtype: bfloat16
+  use_fast_tokenizer: true
+
+intervention:
+
+  layer: [0,5,10,15,20,25,30,35]
+  component: block_output
+  unit: pos
+  # Used by train_multi_boundless_das.py: fixed number of rotated dimensions.
+  num_dim: 1
+  intervene_direction: source_to_base  
+training:
+  seed: 42
+  # Base batch sizes used for 1 attractor (NUA=1).
+  # For NUA=n, script uses: floor(base_batch_size / 2^(n-1)).
+  batch_size: 1280
+  eval_batch_size: 1280
+  min_batch_size: 1
+  epochs: 3
+  gradient_accumulation_steps: 1
+
+  # DBM defaults from RAVEL training setup.
+  init_lr: 1.0e-4
+  regularization_coefficient: 0.001
+  temperature_schedule: [1.0e-2, 1.0e-7]
+
+  lr_rotate: 1.0e-3
+  lr_boundary: 1.0e-2
+  warmup_ratio: 0.1
+  temperature_start: 50.0
+  temperature_end: 0.1
+  boundary_loss_weight: 1.0
+  log_every_steps: 20
+
+output:
+  root_dir: results_dbm 
+  before_training_log: 50_samples_before_training.txt
+  after_training_log: 50_samples_after_training.txt
+  epoch_tracking:
+    enabled: false
+    sample_count: 10
+    file_name: epoch_test_tracking.txt
+  result_file: result.json
