@@ -1,10 +1,10 @@
 model:
-  name: ministral-3-8b
-  path: mistralai/Ministral-3-8B-Base-2512
+  name: olmo-3-7b
+  path: allenai/Olmo-3-1025-7B
 
 dataset:
   data_root: ../data/data_generators/templates/data
-  dataset_name: obj_rel_across_anim_2
+  dataset_name: obj_rel_across_anim_d2
   variation: linear
   NUA: [1,2,3,4]
   train_split_dir: train

@@ -15,6 +15,7 @@ from .llava.modelings_intervenable_llava import *
 from .qwen2.modelings_intervenable_qwen2 import *
 from .olmo.modelings_intervenable_olmo import *
 from .olmo2.modelings_intervenable_olmo2 import *
+from .olmo3.modelings_intervenable_olmo3 import *
 from .qwen3.modelings_intervenable_qwen3 import *
 from .esm.modelings_intervenable_esm import *
 from .mllama.modelings_intervenable_mllama import *
@@ -142,6 +143,30 @@ if enable_blip:
     type_to_dimension_mapping[BlipITMWrapper] = (
         blip_itm_wrapper_type_to_dimension_mapping
     )
+
+# OLMo3 support
+try:
+    from transformers.models import olmo3 as hf_olmo3
+
+    _olmo3_model = getattr(hf_olmo3.modeling_olmo3, "Olmo3Model", None)
+    _olmo3_causal = getattr(hf_olmo3.modeling_olmo3, "Olmo3ForCausalLM", None)
+    _olmo3_seq = getattr(
+        hf_olmo3.modeling_olmo3, "Olmo3ForSequenceClassification", None
+    )
+
+    if _olmo3_model is not None:
+        type_to_module_mapping[_olmo3_model] = olmo3_type_to_module_mapping
+        type_to_dimension_mapping[_olmo3_model] = olmo3_type_to_dimension_mapping
+    if _olmo3_causal is not None:
+        type_to_module_mapping[_olmo3_causal] = olmo3_lm_type_to_module_mapping
+        type_to_dimension_mapping[_olmo3_causal] = olmo3_lm_type_to_dimension_mapping
+    if _olmo3_seq is not None:
+        type_to_module_mapping[_olmo3_seq] = olmo3_classifier_type_to_module_mapping
+        type_to_dimension_mapping[_olmo3_seq] = (
+            olmo3_classifier_type_to_dimension_mapping
+        )
+except Exception:
+    pass
 
 # Gemma3 support (align text backbone to Gemma2-style mappings)
 try:

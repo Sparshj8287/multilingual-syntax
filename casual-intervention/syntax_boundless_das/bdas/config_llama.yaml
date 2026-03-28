@@ -5,7 +5,7 @@ model:
 dataset:
   data_root: ../data/data_generators/templates/data
   dataset_name: obj_rel_across_anim_2
-  variation: linear
+  variation: bow
   NUA: [1,2,3,4]
   train_split_dir: train
   test_split_dir: test
