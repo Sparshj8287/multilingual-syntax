@@ -1,6 +1,6 @@
 model:
-  name: gemma-3-12b-pt
-  path: google/gemma-3-12b-pt
+  name: qwen-3-8b
+  path: Qwen/Qwen3-8B-Base
 
 dataset:
   data_root: ../data/data_generators/templates/data
