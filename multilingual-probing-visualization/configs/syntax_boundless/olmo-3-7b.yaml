@@ -1,0 +1,69 @@
+dataset:
+  observation_fieldnames:
+    - index
+    - sentence
+    - lemma_sentence
+    - upos_sentence
+    - xpos_sentence
+    - morph
+    - head_indices
+    - governance_relations
+    - secondary_relations
+    - extra_info
+    - langs
+    - embeddings
+  selector:
+    dataset_name: obj_rel_across_anim
+    variation: linear
+    sentence_type: base_sentence
+    attractor_count: 1
+  # Keep this path aligned with selector fields above.
+  corpus:
+    root: datasets/syntax_boundless_das_ready/obj_rel_across_anim/linear/base_sentence/attractors_1
+    train_path: train.conllu
+    dev_path: dev.conllu
+    test_path: test.conllu
+  batch_size: 16
+model:
+  hidden_dim: 4096
+  model_type: decoder-transformer-lens
+  use_disk: True
+  model_layer: 16
+  layers: [0, 5, 10, 15]
+decoder_model:
+  model_name: allenai/Olmo-3-1025-7B
+  activation_name: resid_post
+  layer: 16
+  batch_size: 8
+  dtype: bfloat16
+  padding_side: right
+  use_vendor_transformer_lens: True
+  cache_dir: /home/sparsh/.cache/huggingface
+  local_path: none
+probe:
+  task_signature: word_pair
+  task_name: parse-distance
+  maximum_rank: 128
+  psd_parameters: True
+  diagonal: False
+  params_path: predictor.params
+  use_polar: True
+probe_training:
+  epochs: 30
+  loss: L1
+  angular_lambda: 10
+reporting:
+  root: experiments/syntax_boundless/olmo-3-7b
+  observation_paths:
+    train_path: train.observations
+    dev_path: dev.observations
+    test_path: test.observations
+  prediction_paths:
+    train_path: train.predictions
+    dev_path: dev.predictions
+    test_path: test.predictions
+  reporting_methods:
+    - spearmanr
+    - uuas
+    - polar_metrics
+seed: 42

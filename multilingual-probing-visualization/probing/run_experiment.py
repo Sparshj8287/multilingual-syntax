@@ -1,5 +1,6 @@
 """Loads configuration yaml and runs an experiment."""
 from argparse import ArgumentParser
+import copy
 import os
 from datetime import datetime
 import shutil
@@ -16,6 +17,111 @@ import regimen
 import reporter
 import task
 import loss
+
+
+def dedupe_layers(layers):
+  ordered = []
+  seen = set()
+  for layer in layers:
+    layer = int(layer)
+    if layer in seen:
+      continue
+    seen.add(layer)
+    ordered.append(layer)
+  return ordered
+
+
+def parse_layers_argument(layers_arg, default_layer):
+  """Parses CLI layer selections.
+
+  Supports:
+    - Comma lists: "0,5,10,15"
+    - Inclusive ranges: "0:20" (step=1)
+    - Inclusive stepped ranges: "0:20:5"
+    - Mixtures: "0,4:12:4,15"
+  """
+  if not layers_arg:
+    if default_layer is None:
+      raise ValueError("No layers provided and no default layer found in config.")
+    return [int(default_layer)]
+
+  layers = []
+  for raw_item in str(layers_arg).split(','):
+    item = raw_item.strip()
+    if not item:
+      continue
+    if ':' in item:
+      parts = [x.strip() for x in item.split(':')]
+      if len(parts) not in (2, 3):
+        raise ValueError("Layer range '{}' must be start:end or start:end:step".format(item))
+      start = int(parts[0])
+      end = int(parts[1])
+      step = int(parts[2]) if len(parts) == 3 else (1 if end >= start else -1)
+      if step == 0:
+        raise ValueError("Layer step cannot be zero in '{}'".format(item))
+      if (end - start) * step < 0:
+        raise ValueError("Layer range '{}' has incompatible step direction".format(item))
+      stop = end + (1 if step > 0 else -1)
+      layers.extend(list(range(start, stop, step)))
+    else:
+      layers.append(int(item))
+
+  if not layers:
+    raise ValueError("No valid layers parsed from '{}'".format(layers_arg))
+  return dedupe_layers(layers)
+
+
+def parse_layers_from_config(config_layers, default_layer):
+  """Parses `model.layers` from YAML config.
+
+  Accepted values:
+    - int: 5
+    - string: "0,5,10" or "0:20:5"
+    - list: [0, 5, 10] or ["0:20:5", 23]
+  """
+  if config_layers is None:
+    if default_layer is None:
+      raise ValueError("Config must define either model.model_layer or model.layers.")
+    return [int(default_layer)]
+
+  if isinstance(config_layers, int):
+    return [int(config_layers)]
+
+  if isinstance(config_layers, str):
+    return parse_layers_argument(config_layers, default_layer=None)
+
+  if isinstance(config_layers, (list, tuple)):
+    layers = []
+    for item in config_layers:
+      if isinstance(item, int):
+        layers.append(item)
+      elif isinstance(item, str):
+        layers.extend(parse_layers_argument(item, default_layer=None))
+      else:
+        raise ValueError("Unsupported item in model.layers: {} ({})".format(item, type(item)))
+    if not layers:
+      raise ValueError("model.layers was provided but no valid layer values were parsed.")
+    return dedupe_layers(layers)
+
+  raise ValueError("Unsupported type for model.layers: {}".format(type(config_layers)))
+
+
+def resolve_layers_to_run(cli_layers_arg, yaml_args):
+  default_layer = yaml_args.get('model', {}).get('model_layer')
+  config_layers = yaml_args.get('model', {}).get('layers')
+  if cli_layers_arg:
+    return parse_layers_argument(cli_layers_arg, default_layer), "cli --layers"
+  if config_layers is not None:
+    return parse_layers_from_config(config_layers, default_layer), "config model.layers"
+  if default_layer is None:
+    raise ValueError("Config must define model.model_layer (or model.layers or --layers).")
+  return [int(default_layer)], "config model.model_layer"
+
+
+def set_config_layer(yaml_args, layer):
+  yaml_args['model']['model_layer'] = int(layer)
+  if 'decoder_model' in yaml_args:
+    yaml_args['decoder_model']['layer'] = int(layer)
 
 def is_polar_probe(args):
   return args.get('probe', {}).get('use_polar', False)
@@ -278,6 +384,8 @@ if __name__ == '__main__':
   argp.add_argument('--results-dir', default='',
       help='Set to reuse an old results dir; '
       'if left empty, new directory is created')
+  argp.add_argument('--layers', default='',
+      help='Comma list/ranges of layers, e.g. "0,5,10,15" or "0:20:5"')
   argp.add_argument('--train-probe', default=-1, type=int,
       help='Set to train a new probe.; ')
   argp.add_argument('--report-results', default=1, type=int,
@@ -287,10 +395,10 @@ if __name__ == '__main__':
       help='sets all random seeds for (within-machine) reproducibility')
   cli_args = argp.parse_args()
   with open(cli_args.experiment_config, 'r') as config_file:
-    yaml_args = yaml.safe_load(config_file)
+    base_yaml_args = yaml.safe_load(config_file)
   if cli_args.seed is None:
-    cli_args.seed = yaml_args.get('seed', 42)
-  yaml_args['seed'] = cli_args.seed
+    cli_args.seed = base_yaml_args.get('seed', 42)
+  base_yaml_args['seed'] = cli_args.seed
   print(f"Seed: {cli_args.seed}")
   if cli_args.seed is not None:
     random.seed(cli_args.seed)
@@ -299,9 +407,25 @@ if __name__ == '__main__':
     torch.cuda.manual_seed_all(cli_args.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-  setup_new_experiment_dir(cli_args, yaml_args, cli_args.results_dir)
-  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-  yaml_args['device'] = device
-  yaml_args['train_probe'] = cli_args.train_probe
-  yaml_args['did_train'] = (os.path.exists(os.path.join(yaml_args['reporting']['root'], yaml_args['probe']['params_path'])))
-  execute_experiment(yaml_args, train_probe=cli_args.train_probe, report_results=cli_args.report_results)
+
+  layers, layer_source = resolve_layers_to_run(cli_args.layers, base_yaml_args)
+  print("Layers to run (from {}): {}".format(layer_source, layers))
+
+  for layer in layers:
+    tqdm.write("=" * 80)
+    tqdm.write(f"[Step] Starting layer {layer}")
+    yaml_args = copy.deepcopy(base_yaml_args)
+    set_config_layer(yaml_args, layer)
+
+    reuse_results_dir = cli_args.results_dir
+    if reuse_results_dir and len(layers) > 1:
+      reuse_results_dir = os.path.join(reuse_results_dir, f"layer-{layer}")
+
+    setup_new_experiment_dir(cli_args, yaml_args, reuse_results_dir)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    yaml_args['device'] = device
+    yaml_args['train_probe'] = cli_args.train_probe
+    yaml_args['did_train'] = (
+      os.path.exists(os.path.join(yaml_args['reporting']['root'], yaml_args['probe']['params_path']))
+    )
+    execute_experiment(yaml_args, train_probe=cli_args.train_probe, report_results=cli_args.report_results)
