@@ -14,12 +14,14 @@ dataset:
     - embeddings
   selector:
     dataset_name: obj_rel_across_anim
+    dataset_names: [obj_rel_across_anim, obj_rel_across_anim_2]
     variation: linear
+    variations: [linear, bow]
     sentence_type: base_sentence
-    attractor_count: 1
-  # Keep this path aligned with selector fields above.
+
+    attractor_counts: [1, 2, 3, 4]
   corpus:
-    root: datasets/syntax_boundless_das_ready/obj_rel_across_anim/linear/base_sentence/attractors_1
+    root_template: datasets/syntax_boundless_das_ready/{dataset_name}/{variation}/{sentence_type}/attractors_{attractor_count}
     train_path: train.conllu
     dev_path: dev.conllu
     test_path: test.conllu
@@ -47,13 +49,14 @@ probe:
   psd_parameters: True
   diagonal: False
   params_path: predictor.params
-  use_polar: True
+  use_polar: False
 probe_training:
   epochs: 30
   loss: L1
   angular_lambda: 10
 reporting:
-  root: experiments/syntax_boundless/qwen-3-8b
+  root: experiments/syntax_boundless
+  layout: corpus
   observation_paths:
     train_path: train.observations
     dev_path: dev.observations

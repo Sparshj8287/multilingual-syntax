@@ -13,28 +13,27 @@ dataset:
     - langs
     - embeddings
   selector:
-    dataset_name: obj_rel_across_anim
-    variation: linear
+    dataset_names: [obj_rel_across_anim, obj_rel_across_anim_2]
+    variations: [linear]
     sentence_type: base_sentence
-    attractor_count: 1
+    attractor_counts: [1,2, 3, 4]
   # Keep this path aligned with selector fields above.
   corpus:
-    root: datasets/syntax_boundless_das_ready/obj_rel_across_anim/linear/base_sentence/attractors_1
+    root_template: datasets/syntax_boundless_das_ready/{dataset_name}/{variation}/{sentence_type}/attractors_{attractor_count}
     train_path: train.conllu
     dev_path: dev.conllu
     test_path: test.conllu
-  batch_size: 16
+  batch_size: 4096
 model:
   hidden_dim: 3840
   model_type: decoder-transformer-lens
   use_disk: True
   model_layer: 16
-  layers: [0, 5, 10, 15]
 decoder_model:
   model_name: google/gemma-3-12b-pt
   activation_name: resid_post
   layer: 16
-  batch_size: 4
+  batch_size: 4096
   dtype: bfloat16
   padding_side: right
   use_vendor_transformer_lens: True
@@ -43,17 +42,18 @@ decoder_model:
 probe:
   task_signature: word_pair
   task_name: parse-distance
-  maximum_rank: 128
+  maximum_rank: 3840
   psd_parameters: True
   diagonal: False
   params_path: predictor.params
-  use_polar: True
+  use_polar: False
 probe_training:
   epochs: 30
   loss: L1
   angular_lambda: 10
 reporting:
-  root: experiments/syntax_boundless/gemma-3-12b-pt
+  root: experiments/syntax_boundless
+  layout: corpus
   observation_paths:
     train_path: train.observations
     dev_path: dev.observations

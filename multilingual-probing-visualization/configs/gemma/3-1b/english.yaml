@@ -28,7 +28,7 @@ model:
   use_disk: True
   model_layer: 16
 decoder_model:
-  model_name: google/gemma-3-1b-pt
+  model_name: google/gemma-2-2b
   activation_name: resid_post
   layer: 16
   batch_size: 64
@@ -44,13 +44,13 @@ probe:
   psd_parameters: True
   diagonal: False
   params_path: predictor.params
-  use_polar: True
+  use_polar: False
 probe_training:
   epochs: 30
   loss: L1
   angular_lambda: 10
 reporting:
-  root: experiments/gemma-3-1b/en
+  root: experiments/gemma-2-2b/en
   observation_paths:
     train_path: train.observations
     dev_path: dev.observations

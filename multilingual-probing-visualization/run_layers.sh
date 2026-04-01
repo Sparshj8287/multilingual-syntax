@@ -29,10 +29,10 @@ do
     # Update both model.model_layer and decoder_model.layer
     
     # 1. Update model.model_layer
-    sed -i "s/model_layer: [0-9]*/model_layer: $layer/" "$TEMP_CONFIG"
+    sed -i "s/model_layer: [0-45]*/model_layer: $layer/" "$TEMP_CONFIG"
     
     # 2. Update decoder_model.layer
-    sed -i "s/  layer: [0-9]*/  layer: $layer/" "$TEMP_CONFIG"
+    sed -i "s/  layer: [0-45]*/  layer: $layer/" "$TEMP_CONFIG"
 
     # Modify the output root directory to include the layer number
     # This prevents all layers from dumping into the same parent folder

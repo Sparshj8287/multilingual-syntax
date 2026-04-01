@@ -97,13 +97,19 @@ class TransformerLensEmbeddingExtractor:
     model_name = decoder_cfg.get('model_name')
     if not model_name:
       raise ValueError("decoder_model.model_name is required (even when using a local_path).")
-    model_source = model_name
+    model_source = self.local_model_path or model_name
+    model_source = os.path.expanduser(model_source)
+    is_local_model_source = os.path.exists(model_source)
     model_kwargs = {
         'device': str(self.device),
         'dtype': dtype,
         'fold_ln': decoder_cfg.get('fold_ln', False),
         'center_writing_weights': decoder_cfg.get('center_writing_weights', False),
     }
+    if self.cache_dir:
+      model_kwargs['cache_dir'] = self.cache_dir
+    if is_local_model_source:
+      model_kwargs['local_files_only'] = True
     self.model = HookedTransformer.from_pretrained(model_source, **model_kwargs)
     self.model.eval()
     self.hidden_size = self.model.cfg.d_model
@@ -111,7 +117,11 @@ class TransformerLensEmbeddingExtractor:
     self.layer_index = self._normalize_layer_index(self.layer_index, self.total_layers)
 
     tokenizer_kwargs = {'use_fast': True, 'padding_side': decoder_cfg.get('padding_side', 'right')}
-    tokenizer_source = model_name
+    tokenizer_source = model_source if is_local_model_source else model_name
+    if self.cache_dir:
+      tokenizer_kwargs['cache_dir'] = self.cache_dir
+    if is_local_model_source:
+      tokenizer_kwargs['local_files_only'] = True
     self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, **tokenizer_kwargs)
     if self.tokenizer.pad_token is None:
       self.tokenizer.pad_token = self.tokenizer.eos_token or self.tokenizer.bos_token

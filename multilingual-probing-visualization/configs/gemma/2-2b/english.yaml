@@ -28,7 +28,7 @@ model:
   use_disk: True
   model_layer: 0
 decoder_model:
-  model_name: google/gemma-2-2b
+  model_name: google/gemma-3-12b-pt
   activation_name: resid_post
   layer: 0
   batch_size: 64
@@ -48,7 +48,7 @@ probe_training:
   epochs: 30
   loss: L1
 reporting:
-  root: experiments/gemma-2-2b/en
+  root: experiments/gemma-3-12b-pt/en
   observation_paths:
     train_path: train.observations
     dev_path: dev.observations

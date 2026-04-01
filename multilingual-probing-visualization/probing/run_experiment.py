@@ -1,6 +1,7 @@
 """Loads configuration yaml and runs an experiment."""
 from argparse import ArgumentParser
 import copy
+import itertools
 import os
 from datetime import datetime
 import shutil
@@ -122,6 +123,208 @@ def set_config_layer(yaml_args, layer):
   yaml_args['model']['model_layer'] = int(layer)
   if 'decoder_model' in yaml_args:
     yaml_args['decoder_model']['layer'] = int(layer)
+
+
+def selector_sweep_keys():
+  return {
+    'dataset_name': 'dataset_names',
+    'variation': 'variations',
+    'sentence_type': 'sentence_types',
+    'attractor_count': 'attractor_counts',
+  }
+
+
+def _as_list(value):
+  if isinstance(value, (list, tuple)):
+    return list(value)
+  return [value]
+
+
+def resolve_selector_combinations(yaml_args):
+  dataset_cfg = yaml_args.get('dataset', {})
+  selector = copy.deepcopy(dataset_cfg.get('selector', {}))
+  if not selector:
+    return [selector], "default selector"
+
+  key_map = selector_sweep_keys()
+  values = {}
+  has_sweep = False
+  for singular_key, plural_key in key_map.items():
+    raw_value = None
+    if plural_key in selector:
+      raw_value = selector.get(plural_key)
+      has_sweep = True
+    elif singular_key in selector:
+      raw_value = selector.get(singular_key)
+
+    if raw_value is None:
+      continue
+
+    parsed = _as_list(raw_value)
+    if not parsed:
+      raise ValueError(f"dataset.selector.{singular_key}/{plural_key} cannot be empty.")
+    values[singular_key] = parsed
+
+  if not has_sweep:
+    return [selector], "config dataset.selector"
+
+  missing = [k for k in key_map.keys() if k not in values]
+  if missing:
+    raise ValueError(
+      "Selector sweep requires values for {}. "
+      "Set these as singular values or plural lists in dataset.selector.".format(", ".join(missing))
+    )
+
+  combinations = []
+  for dataset_name, variation, sentence_type, attractor_count in itertools.product(
+      values['dataset_name'],
+      values['variation'],
+      values['sentence_type'],
+      values['attractor_count']):
+    combo_selector = copy.deepcopy(selector)
+    for plural_key in key_map.values():
+      combo_selector.pop(plural_key, None)
+    combo_selector['dataset_name'] = dataset_name
+    combo_selector['variation'] = variation
+    combo_selector['sentence_type'] = sentence_type
+    combo_selector['attractor_count'] = attractor_count
+    combinations.append(combo_selector)
+
+  return combinations, "config dataset.selector sweep"
+
+
+def apply_selector_to_config(yaml_args, selector):
+  dataset_cfg = yaml_args.setdefault('dataset', {})
+  selector_cfg = copy.deepcopy(selector)
+  for plural_key in selector_sweep_keys().values():
+    selector_cfg.pop(plural_key, None)
+  dataset_cfg['selector'] = selector_cfg
+
+  corpus_cfg = dataset_cfg.setdefault('corpus', {})
+  root_template = corpus_cfg.get('root_template')
+  if root_template:
+    required = ('dataset_name', 'variation', 'sentence_type', 'attractor_count')
+    missing = [k for k in required if k not in selector_cfg]
+    if missing:
+      raise ValueError(
+        "dataset.corpus.root_template requires selector keys: {}.".format(", ".join(missing))
+      )
+    corpus_cfg['root'] = str(root_template).format(
+      dataset_name=selector_cfg['dataset_name'],
+      variation=selector_cfg['variation'],
+      sentence_type=selector_cfg['sentence_type'],
+      attractor_count=selector_cfg['attractor_count'],
+    )
+
+  return apply_attractor_batch_scaling(yaml_args, selector_cfg)
+
+
+def apply_attractor_batch_scaling(yaml_args, selector):
+  """Scales batch sizes by attractor count.
+
+  Rule:
+    attractor_count=1 -> base batch size
+    attractor_count=2 -> base/2
+    attractor_count=3 -> base/4
+    ...
+  """
+  if 'attractor_count' not in selector:
+    return None
+
+  try:
+    attractor_count = int(selector['attractor_count'])
+  except (TypeError, ValueError) as exc:
+    raise ValueError(f"Invalid attractor_count value: {selector['attractor_count']}") from exc
+
+  if attractor_count < 1:
+    raise ValueError(f"attractor_count must be >= 1, got {attractor_count}")
+
+  divisor = 2 ** (attractor_count - 1)
+  scaling_info = {
+    'attractor_count': attractor_count,
+    'divisor': divisor,
+  }
+
+  dataset_cfg = yaml_args.get('dataset', {})
+  if 'batch_size' in dataset_cfg:
+    base_dataset_bs = int(dataset_cfg['batch_size'])
+    scaled_dataset_bs = max(1, base_dataset_bs // divisor)
+    dataset_cfg['batch_size'] = scaled_dataset_bs
+    scaling_info['dataset_batch_size'] = (base_dataset_bs, scaled_dataset_bs)
+
+  decoder_cfg = yaml_args.get('decoder_model', {})
+  if 'batch_size' in decoder_cfg:
+    base_decoder_bs = int(decoder_cfg['batch_size'])
+    scaled_decoder_bs = max(1, base_decoder_bs // divisor)
+    decoder_cfg['batch_size'] = scaled_decoder_bs
+    scaling_info['decoder_batch_size'] = (base_decoder_bs, scaled_decoder_bs)
+
+  return scaling_info
+
+
+def selector_result_suffix(selector):
+  if not selector:
+    return ''
+  dataset_name = selector.get('dataset_name')
+  variation = selector.get('variation')
+  sentence_type = selector.get('sentence_type')
+  attractor_count = selector.get('attractor_count')
+  if None in (dataset_name, variation, sentence_type, attractor_count):
+    return ''
+  return os.path.join(
+    str(dataset_name),
+    str(variation),
+    str(sentence_type),
+    f"attractors_{attractor_count}",
+  )
+
+
+def model_tag(yaml_args):
+  metadata = yaml_args.get('metadata', {})
+  if metadata.get('model_tag'):
+    return str(metadata['model_tag'])
+  decoder_cfg = yaml_args.get('decoder_model', {})
+  model_name = decoder_cfg.get('model_name') or yaml_args.get('model', {}).get('model_name')
+  if not model_name:
+    return 'model'
+  return str(model_name).replace('/', '-')
+
+
+def build_structured_results_dir(yaml_args, date_suffix):
+  """Builds corpus-like results paths for structured experiments."""
+  reporting_cfg = yaml_args.get('reporting', {})
+  layout = reporting_cfg.get('layout')
+  if layout != 'corpus':
+    return None
+
+  selector = yaml_args.get('dataset', {}).get('selector', {})
+  dataset_name = selector.get('dataset_name')
+  variation = selector.get('variation')
+  sentence_type = selector.get('sentence_type')
+  attractor_count = selector.get('attractor_count')
+  if None in (dataset_name, variation, sentence_type, attractor_count):
+    raise ValueError(
+      "reporting.layout='corpus' requires dataset.selector fields: "
+      "dataset_name, variation, sentence_type, attractor_count"
+    )
+
+  root = reporting_cfg.get('root', '')
+  task_name = yaml_args.get('probe', {}).get('task_name', 'task')
+  layer = yaml_args.get('model', {}).get('model_layer')
+  if layer is None:
+    raise ValueError("model.model_layer is required for corpus layout results.")
+
+  return os.path.join(
+    root,
+    str(dataset_name),
+    str(variation),
+    str(sentence_type),
+    f"attractors_{attractor_count}",
+    model_tag(yaml_args),
+    f"layer-{layer}",
+    str(task_name),
+    date_suffix,
+  )
 
 def is_polar_probe(args):
   return args.get('probe', {}).get('use_polar', False)
@@ -367,7 +570,9 @@ def setup_new_experiment_dir(args, yaml_args, reuse_results_path):
       tqdm.write('Setting train_probe to 0 to avoid squashing old params; '
           'explicitly set to 1 to override.')
   else:
-    new_root = os.path.join(yaml_args['reporting']['root'], model_suffix + '-' + date_suffix +'/' )
+    new_root = build_structured_results_dir(yaml_args, date_suffix)
+    if new_root is None:
+      new_root = os.path.join(yaml_args['reporting']['root'], model_suffix + '-' + date_suffix +'/' )
     tqdm.write('Constructing new results directory at {}'.format(new_root))
   yaml_args['reporting']['root'] = new_root
   os.makedirs(new_root, exist_ok=True)
@@ -410,22 +615,43 @@ if __name__ == '__main__':
 
   layers, layer_source = resolve_layers_to_run(cli_args.layers, base_yaml_args)
   print("Layers to run (from {}): {}".format(layer_source, layers))
+  selectors, selector_source = resolve_selector_combinations(base_yaml_args)
+  print("Selector combinations (from {}): {}".format(selector_source, len(selectors)))
 
-  for layer in layers:
-    tqdm.write("=" * 80)
-    tqdm.write(f"[Step] Starting layer {layer}")
-    yaml_args = copy.deepcopy(base_yaml_args)
-    set_config_layer(yaml_args, layer)
+  for selector in selectors:
+    selector_info = selector_result_suffix(selector)
+    if selector_info:
+      tqdm.write("=" * 80)
+      tqdm.write(f"[Step] Starting selector {selector_info}")
+    for layer in layers:
+      tqdm.write("-" * 80)
+      tqdm.write(f"[Step] Starting layer {layer}")
+      yaml_args = copy.deepcopy(base_yaml_args)
+      batch_scaling_info = apply_selector_to_config(yaml_args, selector)
+      set_config_layer(yaml_args, layer)
 
-    reuse_results_dir = cli_args.results_dir
-    if reuse_results_dir and len(layers) > 1:
-      reuse_results_dir = os.path.join(reuse_results_dir, f"layer-{layer}")
+      if batch_scaling_info:
+        ds_bs = batch_scaling_info.get('dataset_batch_size')
+        dec_bs = batch_scaling_info.get('decoder_batch_size')
+        details = [f"attractor={batch_scaling_info['attractor_count']} (x1/{batch_scaling_info['divisor']})"]
+        if ds_bs:
+          details.append(f"dataset.batch_size {ds_bs[0]}->{ds_bs[1]}")
+        if dec_bs:
+          details.append(f"decoder_model.batch_size {dec_bs[0]}->{dec_bs[1]}")
+        tqdm.write("[Step] Batch scaling: " + ", ".join(details))
 
-    setup_new_experiment_dir(cli_args, yaml_args, reuse_results_dir)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    yaml_args['device'] = device
-    yaml_args['train_probe'] = cli_args.train_probe
-    yaml_args['did_train'] = (
-      os.path.exists(os.path.join(yaml_args['reporting']['root'], yaml_args['probe']['params_path']))
-    )
-    execute_experiment(yaml_args, train_probe=cli_args.train_probe, report_results=cli_args.report_results)
+      reuse_results_dir = cli_args.results_dir
+      if reuse_results_dir:
+        if len(selectors) > 1 and selector_info:
+          reuse_results_dir = os.path.join(reuse_results_dir, selector_info)
+        if len(layers) > 1:
+          reuse_results_dir = os.path.join(reuse_results_dir, f"layer-{layer}")
+
+      setup_new_experiment_dir(cli_args, yaml_args, reuse_results_dir)
+      device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+      yaml_args['device'] = device
+      yaml_args['train_probe'] = cli_args.train_probe
+      yaml_args['did_train'] = (
+        os.path.exists(os.path.join(yaml_args['reporting']['root'], yaml_args['probe']['params_path']))
+      )
+      execute_experiment(yaml_args, train_probe=cli_args.train_probe, report_results=cli_args.report_results)

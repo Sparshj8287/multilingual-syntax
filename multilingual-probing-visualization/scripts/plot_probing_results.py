@@ -6,20 +6,28 @@ import matplotlib.pyplot as plt
 
 def _find_run_roots(experiments_dir):
     run_roots = []
+   
     for root, dirs, _ in os.walk(experiments_dir):
+
         layer_dirs = [d for d in dirs if re.match(r'^layer-\d+$', d)]
+        
+
         model_layer_dirs = [d for d in dirs if re.match(r'^model-layer-\d+-', d)]
+        
         if layer_dirs:
             run_roots.append((root, layer_dirs))
+
             dirs[:] = [d for d in dirs if d not in layer_dirs]
         elif model_layer_dirs:
             run_roots.append((root, model_layer_dirs))
             dirs[:] = [d for d in dirs if d not in model_layer_dirs]
+            
     return run_roots
 
 
 def _parse_layer_from_dir(dirname):
-    match = re.search(r'layer-(\d+)', dirname)
+
+    match = re.search(r'(?:^|-)layer-(\d+)', dirname)
     if match:
         return int(match.group(1))
     return None
@@ -52,11 +60,21 @@ def main():
             if layer_num is None:
                 continue
             layer_path = os.path.join(run_root, layer_dir)
-            metric_path = os.path.join(layer_path, 'polar_results', args.metric_file)
-            if not os.path.exists(metric_path):
-                metric_path = os.path.join(layer_path, args.metric_file)
-            if not os.path.exists(metric_path):
+            
+
+            metric_path = None
+            for dirpath, _, filenames in os.walk(layer_path):
+                if args.metric_file in filenames:
+                    metric_path = os.path.join(dirpath, args.metric_file)
+
+                    polar_path = os.path.join(dirpath, 'polar_results', args.metric_file)
+                    if os.path.exists(polar_path):
+                        metric_path = polar_path
+                    break
+                    
+            if metric_path is None or not os.path.exists(metric_path):
                 continue
+                
             try:
                 with open(metric_path, 'r') as f:
                     content = f.read().strip()
