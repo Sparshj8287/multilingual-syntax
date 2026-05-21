@@ -138,6 +138,8 @@ def load_model_and_tokenizer(
         device_map=device_map,
         token=hf_token,
     )
+
+    print("Loaded model name:", model.name_or_path)
     if model.get_input_embeddings().num_embeddings < len(tokenizer):
         model.resize_token_embeddings(len(tokenizer))
     if model.generation_config.pad_token_id is None:
@@ -1324,7 +1326,7 @@ def main() -> None:
                 output_cfg.get("before_training_log", "50_samples_before_training.txt")
             )
             before_path.write_text(before_text, encoding="utf-8")
-            print(before_text)
+            # print(before_text)
 
             baseline_val_metrics = evaluate(intervenable, val_dataloader, training_device)
             baseline_test_metrics = evaluate(intervenable, test_dataloader, training_device)
@@ -1482,7 +1484,7 @@ def main() -> None:
                 output_cfg.get("after_training_log", "50_samples_after_training.txt")
             )
             after_path.write_text(after_text, encoding="utf-8")
-            print(after_text)
+            # print(after_text)
 
             result_payload = {
                 "model": {

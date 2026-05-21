@@ -1,10 +1,10 @@
 model:
-  name: qwen-3-8b
-  path: Qwen/Qwen3-8B-Base
+  name: gemma-3-12b-pt
+  path: google/gemma-3-12b-pt
 
 dataset:
   data_root: ../data/data_generators/templates/data
-  dataset_name: obj_rel_across_anim
+  dataset_name: obj_rel_across_anim_2
   variation: bow
   NUA: [1,2,3,4]
   train_split_dir: train

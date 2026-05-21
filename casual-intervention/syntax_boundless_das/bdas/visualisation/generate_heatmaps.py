@@ -67,23 +67,14 @@ def should_include_model(model, model_filters):
     return any(model_filter in normalized_model for model_filter in model_filters)
 
 
-def get_label_and_hypothesis(dataset, variation):
-    if dataset == "obj_rel_across_anim":
-        return "obj_rel_across_anim", "syntax"
-    if dataset == "obj_rel_across_anim_2":
-        return "obj_rel_across_anim", variation
-    return dataset, variation
-
-
-def build_group_key(dataset, variation, direction, config_name=None):
-    label, hypothesis = get_label_and_hypothesis(dataset, variation)
-    parts = [label, hypothesis]
+def build_group_key(paradigm, hypothesis, direction, config_name=None):
+    parts = [paradigm, hypothesis]
     if config_name:
         parts.append(config_name)
     parts.append(direction)
     filename_stem = "_".join(parts)
     title_parts = [
-        f"Label: {label}",
+        f"Paradigm: {paradigm}",
         f"Hypothesis: {hypothesis}",
         f"Direction: {direction}",
     ]
