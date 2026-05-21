@@ -4,8 +4,6 @@ evaluation:
   dataset_name: obj_rel_across_anim_test
   input_variations:
     - linear
-    - bow
-    - maximal
   input_glob: "*.jsonl"
   sample_logs_per_file: 50
   random_seed: 13
@@ -18,8 +16,8 @@ inference:
   # cuda_device: 0
 
 models:
-  - name: gemma-3-27b-pt
-    checkpoint: google/gemma-3-27b-pt
+  - name: gemma-3-12b-pt
+    checkpoint: google/gemma-3-12b-pt
   # - name: llama-3.1-8b
   #   checkpoint: /home/models/Llama-3.1-8B
   # - name: qwen-3-8b

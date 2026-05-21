@@ -20,7 +20,12 @@ causalgym/
 ravel/
 results_dbm/
 plots_dbm/
-
+checkpoints*/
+results*/
+plots*/
+feature-circuits/
+RelP/
+ravel/
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo
 # ------------------------------------------------------------------

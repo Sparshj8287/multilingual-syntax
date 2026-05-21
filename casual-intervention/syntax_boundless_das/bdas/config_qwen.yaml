@@ -30,15 +30,26 @@ intervention:
   unit: pos
   # Used by train_multi_boundless_das.py: fixed number of rotated dimensions.
   num_dim: 1
-  intervene_direction: source_to_base  
+  intervene_direction: base_to_source
 training:
   seed: 42
+  # Evaluate the randomly initialized rotation/boundary without optimizer updates.
+  random_rotation_eval: false
   # Base batch sizes used for 1 attractor (NUA=1).
   # For NUA=n, script uses: floor(base_batch_size / 2^(n-1)).
   batch_size: 1280
   eval_batch_size: 1280
   min_batch_size: 1
-  epochs: 3
+  epochs: 20
+  early_stopping:
+    enabled: true
+    monitor_metric: test_accuracy
+    patience: 3
+    min_delta: 0.005
+  best_rotation_checkpoint:
+    enabled: true
+    root_dir: checkpoints_das_full_es
+    file_name: best_rotation_checkpoint.pt
   gradient_accumulation_steps: 1
 
   # DBM defaults from RAVEL training setup.
@@ -55,7 +66,7 @@ training:
   log_every_steps: 20
 
 output:
-  root_dir: results_dbm 
+  root_dir: results_das_full_es
   before_training_log: 50_samples_before_training.txt
   after_training_log: 50_samples_after_training.txt
   epoch_tracking:

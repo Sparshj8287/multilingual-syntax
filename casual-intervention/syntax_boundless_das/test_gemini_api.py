@@ -5,10 +5,10 @@ from google.genai import types
 
 def generate():
     client = genai.Client(
-        api_key="AIzaSyAeTEXENYDFTf5oeTUK0rZwN1G4NAVt3O0",
+        api_key="AIzaSyCbJodx9vngcQwnAySHajJufe2W6t7mXMQ",
     )
 
-    model = "gemini-3-pro-preview"
+    model = "gemini-3.1-pro-preview"
     contents = [
         types.Content(
             role="user",

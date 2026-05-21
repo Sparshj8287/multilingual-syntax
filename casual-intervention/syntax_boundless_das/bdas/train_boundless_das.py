@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import copy
 import json
 import os
 import random
@@ -627,6 +628,54 @@ def evaluate(
     }
 
 
+def get_intervention_state(intervenable: IntervenableModel) -> list[dict[str, Any]]:
+    state: list[dict[str, Any]] = []
+    for intervention_key, intervention in intervenable.interventions.items():
+        state.append(
+            {
+                "intervention_key": str(intervention_key),
+                "rotate_layer_state_dict": copy.deepcopy(
+                    {
+                        key: value.detach().cpu().clone()
+                        for key, value in intervention.rotate_layer.state_dict().items()
+                    }
+                ),
+                "intervention_boundaries": (
+                    intervention.intervention_boundaries.detach().cpu().clone()
+                ),
+            }
+        )
+    return state
+
+
+def load_intervention_state(
+    intervenable: IntervenableModel,
+    state: list[dict[str, Any]],
+) -> None:
+    interventions = list(intervenable.interventions.items())
+    if len(state) != len(interventions):
+        raise ValueError(
+            "Checkpoint intervention count does not match current intervenable model: "
+            f"{len(state)} != {len(interventions)}"
+        )
+
+    for state_item, (_, intervention) in zip(state, interventions):
+        intervention.rotate_layer.load_state_dict(state_item["rotate_layer_state_dict"])
+        boundary = state_item.get("intervention_boundaries")
+        if boundary is not None:
+            intervention.intervention_boundaries.data.copy_(
+                boundary.to(intervention.intervention_boundaries.device)
+            )
+
+
+def normalize_nested_config(raw_value: Any, *, enabled_key: str = "enabled") -> dict[str, Any]:
+    if isinstance(raw_value, dict):
+        return raw_value
+    if raw_value is None:
+        return {}
+    return {enabled_key: bool(raw_value)}
+
+
 def build_sample_logs(
     intervenable: IntervenableModel,
     sample_examples: list[dict[str, Any]],
@@ -754,7 +803,8 @@ def train(
     device: torch.device,
     test_dataloader: DataLoader | None = None,
     epoch_end_callback: Callable[[dict[str, Any]], None] | None = None,
-) -> list[dict[str, Any]]:
+    best_rotation_checkpoint_path: Path | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     epochs = int(training_cfg.get("epochs", 3))
     gradient_accumulation_steps = int(training_cfg.get("gradient_accumulation_steps", 1))
     lr_rotate = float(training_cfg.get("lr_rotate", 1.0e-3))
@@ -764,6 +814,26 @@ def train(
     temperature_end = float(training_cfg.get("temperature_end", 0.1))
     boundary_loss_weight = float(training_cfg.get("boundary_loss_weight", 1.0))
     log_every_steps = int(training_cfg.get("log_every_steps", 20))
+    early_stopping_cfg = normalize_nested_config(training_cfg.get("early_stopping", {}))
+    early_stopping_enabled = bool(early_stopping_cfg.get("enabled", False))
+    early_stopping_patience = int(early_stopping_cfg.get("patience", 3))
+    early_stopping_min_delta = float(early_stopping_cfg.get("min_delta", 0.005))
+    monitor_metric_name = str(
+        early_stopping_cfg.get("monitor_metric", "test_accuracy")
+    ).strip()
+    checkpoint_cfg = normalize_nested_config(
+        training_cfg.get("best_rotation_checkpoint", {})
+    )
+    checkpoint_enabled = bool(checkpoint_cfg.get("enabled", False))
+
+    if early_stopping_patience <= 0:
+        raise ValueError("training.early_stopping.patience must be > 0.")
+    if early_stopping_min_delta < 0:
+        raise ValueError("training.early_stopping.min_delta must be >= 0.")
+    if monitor_metric_name not in {"test_accuracy", "val_accuracy"}:
+        raise ValueError(
+            "training.early_stopping.monitor_metric must be 'test_accuracy' or 'val_accuracy'."
+        )
 
     total_train_steps = max(1, len(train_dataloader) * epochs)
     warmup_steps = int(warmup_ratio * total_train_steps)
@@ -798,6 +868,14 @@ def train(
 
     history: list[dict[str, Any]] = []
     global_step = 0
+    track_best_state = early_stopping_enabled or checkpoint_enabled
+    best_state: list[dict[str, Any]] | None = None
+    best_monitor_accuracy: float | None = None
+    best_epoch: int | None = None
+    stale_eval_count = 0
+    stopped_early = False
+    stop_reason: str | None = None
+    saved_checkpoint_path: str | None = None
 
     for epoch in trange(epochs, desc="Epoch"):
         epoch_total = 0
@@ -857,6 +935,43 @@ def train(
         test_metrics = None
         if test_dataloader is not None:
             test_metrics = evaluate(intervenable, test_dataloader, device)
+        if monitor_metric_name == "test_accuracy" and test_metrics is None:
+            raise ValueError(
+                "training.early_stopping.monitor_metric='test_accuracy' requires a test dataloader."
+            )
+        if monitor_metric_name == "test_accuracy":
+            monitor_accuracy = float(test_metrics["accuracy"])
+        else:
+            monitor_accuracy = float(val_metrics["accuracy"])
+        is_best_epoch = False
+        if track_best_state:
+            if (
+                best_monitor_accuracy is None
+                or monitor_accuracy >= best_monitor_accuracy + early_stopping_min_delta
+            ):
+                best_monitor_accuracy = monitor_accuracy
+                best_epoch = epoch + 1
+                stale_eval_count = 0
+                is_best_epoch = True
+                best_state = get_intervention_state(intervenable)
+                if checkpoint_enabled and best_rotation_checkpoint_path is not None:
+                    torch.save(
+                        {
+                            "epoch": best_epoch,
+                            monitor_metric_name: best_monitor_accuracy,
+                            "min_delta": early_stopping_min_delta,
+                            "monitor_metric": monitor_metric_name,
+                            "intervention_state": best_state,
+                        },
+                        best_rotation_checkpoint_path,
+                    )
+                    saved_checkpoint_path = str(best_rotation_checkpoint_path)
+                    print(
+                        f"[checkpoint] saved best rotation state to {best_rotation_checkpoint_path} "
+                        f"(epoch={best_epoch}, {monitor_metric_name}={best_monitor_accuracy:.4f})"
+                    )
+            else:
+                stale_eval_count += 1
 
         epoch_result = {
             "epoch": epoch + 1,
@@ -867,6 +982,15 @@ def train(
             "val_avg_target_minus_wrong_logit": val_metrics[
                 "avg_target_minus_wrong_logit"
             ],
+            "is_best": is_best_epoch,
+            "best_monitor_metric": monitor_metric_name,
+            "best_test_accuracy": best_monitor_accuracy
+            if monitor_metric_name == "test_accuracy"
+            else None,
+            "best_val_accuracy": best_monitor_accuracy
+            if monitor_metric_name == "val_accuracy"
+            else None,
+            "early_stopping_stale_evals": stale_eval_count,
         }
         if test_metrics is not None:
             epoch_result["test_accuracy"] = test_metrics["accuracy"]
@@ -894,7 +1018,48 @@ def train(
         if epoch_end_callback is not None:
             epoch_end_callback(epoch_result)
 
-    return history
+        if early_stopping_enabled and stale_eval_count >= early_stopping_patience:
+            stopped_early = True
+            stop_reason = (
+                f"{monitor_metric_name} did not improve by at least "
+                f"{early_stopping_min_delta} for {early_stopping_patience} evaluations"
+            )
+            print(f"[early-stop] {stop_reason}; stopping at epoch {epoch + 1}")
+            break
+
+    loaded_best_state = False
+    if best_state is not None:
+        load_intervention_state(intervenable, best_state)
+        loaded_best_state = True
+        print(
+            f"[best] restored best intervention state from epoch {best_epoch} "
+            f"({monitor_metric_name}={best_monitor_accuracy:.4f})"
+        )
+
+    training_summary = {
+        "early_stopping": {
+            "enabled": early_stopping_enabled,
+            "patience": early_stopping_patience,
+            "min_delta": early_stopping_min_delta,
+            "stopped_early": stopped_early,
+            "stop_reason": stop_reason,
+            "best_epoch": best_epoch,
+            "monitor_metric": monitor_metric_name if best_epoch is not None else None,
+            "best_test_accuracy": best_monitor_accuracy
+            if best_epoch is not None and monitor_metric_name == "test_accuracy"
+            else None,
+            "best_val_accuracy": best_monitor_accuracy
+            if best_epoch is not None and monitor_metric_name == "val_accuracy"
+            else None,
+            "stale_evals": stale_eval_count,
+        },
+        "best_rotation_checkpoint": {
+            "enabled": checkpoint_enabled,
+            "path": saved_checkpoint_path,
+            "loaded_best_state": loaded_best_state,
+        },
+    }
+    return history, training_summary
 
 
 def main() -> None:
@@ -929,6 +1094,9 @@ def main() -> None:
     val_size = int(dataset_cfg.get("val_size", 1000))
     test_size = int(dataset_cfg.get("test_size", 0))
     train_seed = int(training_cfg.get("seed", 42))
+    random_rotation_eval = bool(
+        training_cfg.get("random_rotation_eval", training_cfg.get("skip_training", False))
+    )
 
     set_seed(train_seed)
     random.seed(train_seed)
@@ -952,6 +1120,8 @@ def main() -> None:
         f"nua_values={[run['nua'] for run in dataset_runs]}"
     )
     print(f"[setup] intervene_direction={intervene_direction}")
+    if random_rotation_eval:
+        print("[setup] random_rotation_eval=true; evaluating initialized rotation without training")
 
     pad_id = model.generation_config.pad_token_id
     if pad_id is None:
@@ -969,6 +1139,13 @@ def main() -> None:
     print(f"[setup] layers={layers}")
 
     output_root = resolve_path(config_dir, str(output_cfg.get("root_dir", "results")))
+    checkpoint_cfg = normalize_nested_config(
+        training_cfg.get("best_rotation_checkpoint", {})
+    )
+    checkpoint_root = resolve_path(
+        config_dir,
+        str(checkpoint_cfg.get("root_dir", "checkpoints")),
+    )
     model_dir_name = sanitize_model_dir_name(model_name, model_path)
     epoch_tracking_cfg = output_cfg.get("epoch_tracking", {})
     epoch_tracking_enabled = bool(epoch_tracking_cfg.get("enabled", True))
@@ -980,6 +1157,7 @@ def main() -> None:
         raise ValueError("output.epoch_tracking.sample_count must be > 0")
 
     variation_result_dir = output_root / model_dir_name / dataset_name / variation
+    variation_checkpoint_dir = checkpoint_root / model_dir_name / dataset_name / variation
     variation_result_dir.mkdir(parents=True, exist_ok=True)
 
     all_nua_summary: list[dict[str, Any]] = []
@@ -988,6 +1166,9 @@ def main() -> None:
         train_path = Path(run_spec["train_path"])
         test_path = Path(run_spec["test_path"])
         attractor_dir = variation_result_dir / f"{nua}_attractor" / intervene_direction
+        attractor_checkpoint_dir = (
+            variation_checkpoint_dir / f"{nua}_attractor" / intervene_direction
+        )
         attractor_dir.mkdir(parents=True, exist_ok=True)
 
         train_rows = load_jsonl(train_path)
@@ -1088,6 +1269,12 @@ def main() -> None:
             layer_result_dir = attractor_dir / f"layer_{layer}"
             layer_result_dir.mkdir(parents=True, exist_ok=True)
             epoch_tracking_path = layer_result_dir / epoch_tracking_file_name
+            layer_checkpoint_dir = attractor_checkpoint_dir / f"layer_{layer}"
+            if bool(checkpoint_cfg.get("enabled", False)):
+                layer_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            best_rotation_checkpoint_path = layer_checkpoint_dir / str(
+                checkpoint_cfg.get("file_name", "best_rotation_checkpoint.pt")
+            )
 
             intervenable_config = IntervenableConfig(
                 model_type=type(model),
@@ -1215,30 +1402,74 @@ def main() -> None:
                     f"[saved] {epoch_tracking_path} (after epoch {epoch_result['epoch']})"
                 )
 
-            history = train(
-                intervenable,
-                train_dataloader,
-                val_dataloader,
-                training_cfg,
-                device=training_device,
-                test_dataloader=test_dataloader,
-                epoch_end_callback=on_epoch_end,
-            )
+            if random_rotation_eval:
+                history = []
+                training_summary = {
+                    "early_stopping": {
+                        "enabled": False,
+                        "patience": int(
+                            normalize_nested_config(
+                                training_cfg.get("early_stopping", {})
+                            ).get("patience", 3)
+                        ),
+                        "min_delta": float(
+                            normalize_nested_config(
+                                training_cfg.get("early_stopping", {})
+                            ).get("min_delta", 0.005)
+                        ),
+                        "stopped_early": False,
+                        "stop_reason": "random_rotation_eval skips training",
+                        "best_epoch": None,
+                        "monitor_metric": None,
+                        "best_test_accuracy": None,
+                        "best_val_accuracy": None,
+                        "stale_evals": 0,
+                    },
+                    "best_rotation_checkpoint": {
+                        "enabled": bool(checkpoint_cfg.get("enabled", False)),
+                        "path": None,
+                        "loaded_best_state": False,
+                    },
+                }
+                final_val_metrics = baseline_val_metrics
+                final_test_metrics = baseline_test_metrics
+                print(
+                    f"[random][nua={nua}][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
+                    f"test_acc={final_test_metrics['accuracy']:.4f}"
+                )
+                after_header = (
+                    "Detailed 50-sample logs RANDOM ROTATION (no training)\n"
+                    f"Direction: {intervene_direction}\n"
+                    f"NUA: {nua}\n"
+                    f"Layer: {layer}\n"
+                    "Logit index 0 = target correct verb, index 1 = wrong verb"
+                )
+            else:
+                history, training_summary = train(
+                    intervenable,
+                    train_dataloader,
+                    val_dataloader,
+                    training_cfg,
+                    device=training_device,
+                    test_dataloader=test_dataloader,
+                    epoch_end_callback=on_epoch_end,
+                    best_rotation_checkpoint_path=best_rotation_checkpoint_path,
+                )
 
-            final_val_metrics = evaluate(intervenable, val_dataloader, training_device)
-            final_test_metrics = evaluate(intervenable, test_dataloader, training_device)
-            print(
-                f"[final][nua={nua}][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
-                f"test_acc={final_test_metrics['accuracy']:.4f}"
-            )
+                final_val_metrics = evaluate(intervenable, val_dataloader, training_device)
+                final_test_metrics = evaluate(intervenable, test_dataloader, training_device)
+                print(
+                    f"[final][nua={nua}][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
+                    f"test_acc={final_test_metrics['accuracy']:.4f}"
+                )
 
-            after_header = (
-                "Detailed 50-sample logs AFTER training\n"
-                f"Direction: {intervene_direction}\n"
-                f"NUA: {nua}\n"
-                f"Layer: {layer}\n"
-                "Logit index 0 = target correct verb, index 1 = wrong verb"
-            )
+                after_header = (
+                    "Detailed 50-sample logs AFTER training\n"
+                    f"Direction: {intervene_direction}\n"
+                    f"NUA: {nua}\n"
+                    f"Layer: {layer}\n"
+                    "Logit index 0 = target correct verb, index 1 = wrong verb"
+                )
             after_text = build_50_sample_logs(
                 intervenable,
                 sample_examples,
@@ -1287,6 +1518,9 @@ def main() -> None:
                 },
                 "training": {
                     "seed": train_seed,
+                    "random_rotation_eval": random_rotation_eval,
+                    "trained": not random_rotation_eval,
+                    "epochs_completed": len(history),
                     "epochs": int(training_cfg.get("epochs", 3)),
                     "batch_size": current_train_batch_size,
                     "eval_batch_size": current_eval_batch_size,
@@ -1306,6 +1540,10 @@ def main() -> None:
                     "boundary_loss_weight": float(
                         training_cfg.get("boundary_loss_weight", 1.0)
                     ),
+                    "early_stopping": training_summary["early_stopping"],
+                    "best_rotation_checkpoint": training_summary[
+                        "best_rotation_checkpoint"
+                    ],
                     "history": history,
                 },
                 "baseline": {
@@ -1322,6 +1560,9 @@ def main() -> None:
                     "epoch_tracking_log": (
                         str(epoch_tracking_path) if epoch_tracking_enabled else None
                     ),
+                    "best_rotation_checkpoint": training_summary[
+                        "best_rotation_checkpoint"
+                    ]["path"],
                 },
             }
             result_path = layer_result_dir / str(
