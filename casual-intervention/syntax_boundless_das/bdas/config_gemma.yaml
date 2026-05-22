@@ -4,9 +4,9 @@ model:
 
 dataset:
   data_root: ../data/data_generators/templates/data
-  dataset_name: obj_rel_across_anim_2
+  dataset_name: obj_rel_across_anim
   variation: bow
-  NUA: [1,2,3,4]
+  NUA: [3,4]
   train_split_dir: train
   test_split_dir: test
   file_name_template: "{dataset_name}_pairs_{variation}_{nua}.jsonl"
@@ -30,7 +30,7 @@ intervention:
   unit: pos
   # Used by train_multi_boundless_das.py: fixed number of rotated dimensions.
   num_dim: 1
-  intervene_direction: source_to_base
+  intervene_direction: base_to_source
 training:
   seed: 42
   # Evaluate the randomly initialized rotation/boundary without optimizer updates.
