@@ -1,52 +1,84 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# =========================================================================
-# Run this script with a specific GPU, for example:
-# CUDA_VISIBLE_DEVICES=0 ./run_experiments.sh
-#
-# To run on the second GPU, modify the CONFIGS array to contain the other
-# two models (e.g., config_olmo.yaml and config_qwen.yaml) and run:
-# CUDA_VISIBLE_DEVICES=1 ./run_experiments.sh
-# =========================================================================
+set -Eeuo pipefail
 
-# List of config files for the models to run on this GPU
-CONFIGS=("config_qwen.yaml" "config_olmo.yaml")
+usage() {
+    echo "Usage: $0 <seed> [gpu_id]"
+    echo "Example: $0 96 0"
+    echo "You may also set CUDA_VISIBLE_DEVICES instead of passing gpu_id."
+}
 
-# Datasets and variations to iterate over
-DATASETS=("obj_rel_across_anim_2" "obj_rel_across_anim")
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+    usage
+    exit 1
+fi
+
+SEED="$1"
+if [[ ! "$SEED" =~ ^[0-9]+$ ]]; then
+    echo "Error: seed must be a non-negative integer." >&2
+    usage >&2
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG="$SCRIPT_DIR/config_gemma.yaml"
+TRAIN_SCRIPT="$SCRIPT_DIR/train_DBM.py"
+
+if [[ ! -f "$CONFIG" ]]; then
+    echo "Error: config file not found: $CONFIG" >&2
+    exit 1
+fi
+if [[ ! -f "$TRAIN_SCRIPT" ]]; then
+    echo "Error: training script not found: $TRAIN_SCRIPT" >&2
+    exit 1
+fi
+
+# An explicit gpu_id takes precedence, followed by the existing environment.
+GPU_ID="${2:-${CUDA_VISIBLE_DEVICES:-0}}"
+export CUDA_VISIBLE_DEVICES="$GPU_ID"
+
+DATASETS=("obj_rel_across_anim" "obj_rel_across_anim_2")
 VARIATIONS=("linear" "bow")
+INTERVENTION_DIRECTIONS=("source_to_base" "base_to_source")
 
-# Intervention type to use
-INTERVENTION="base_to_source"
+# Keep the source config unchanged. The temporary config remains in the same
+# directory so that paths relative to config_olmo.yaml continue to work.
+RUN_CONFIG="$(mktemp "$SCRIPT_DIR/.config_gemma_seed_${SEED}.XXXXXX.yaml")"
+cp "$CONFIG" "$RUN_CONFIG"
+trap 'rm -f "$RUN_CONFIG"' EXIT
 
-for config in "${CONFIGS[@]}"; do
-    if [ ! -f "$config" ]; then
-        echo "Error: Config file $config not found!"
-        continue
-    fi
+TOTAL_RUNS=$((
+    ${#DATASETS[@]}
+    * ${#VARIATIONS[@]}
+    * ${#INTERVENTION_DIRECTIONS[@]}
+))
+RUN_NUMBER=0
 
-    for dataset in "${DATASETS[@]}"; do
-        for variation in "${VARIATIONS[@]}"; do
+echo "Starting $TOTAL_RUNS Gemma experiments with seed $SEED on GPU(s): $CUDA_VISIBLE_DEVICES"
+
+for dataset in "${DATASETS[@]}"; do
+    for variation in "${VARIATIONS[@]}"; do
+        for direction in "${INTERVENTION_DIRECTIONS[@]}"; do
+            RUN_NUMBER=$((RUN_NUMBER + 1))
+
+            sed -i -E "s/^[[:space:]]*dataset_name:.*/  dataset_name: $dataset/" "$RUN_CONFIG"
+            sed -i -E "s/^[[:space:]]*variation:.*/  variation: $variation/" "$RUN_CONFIG"
+            sed -i -E "s/^[[:space:]]*intervene_direction:.*/  intervene_direction: $direction/" "$RUN_CONFIG"
+            sed -i -E "s/^[[:space:]]*seed:.*/  seed: $SEED/" "$RUN_CONFIG"
+
             echo "=========================================================="
-            echo "Running Model Config: $config"
-            echo "Dataset: $dataset | Variation: $variation"
-            echo "Intervention: $INTERVENTION"
+            echo "Run $RUN_NUMBER/$TOTAL_RUNS"
+            echo "Dataset: $dataset"
+            echo "Variation: $variation"
+            echo "Intervention direction: $direction"
+            echo "Seed: $SEED"
             echo "=========================================================="
-            
-            # Update the YAML config file using sed (handles leading spaces)
-            sed -i -E "s/^[[:space:]]*dataset_name:.*/  dataset_name: $dataset/" "$config"
-            sed -i -E "s/^[[:space:]]*variation:.*/  variation: $variation/" "$config"
-            sed -i -E "s/^[[:space:]]*intervene_direction:.*/  intervene_direction: $INTERVENTION/" "$config"
-            
-            # Execute the training script
-            python train_DBM.py --config "$config"
-            
-            echo "----------------------------------------------------------"
-            echo "Completed $config for $dataset ($variation)"
-            echo "----------------------------------------------------------"
-            echo ""
+
+            python "$TRAIN_SCRIPT" --config "$RUN_CONFIG"
+
+            echo "Completed run $RUN_NUMBER/$TOTAL_RUNS"
         done
     done
 done
 
-echo "All experiments finished successfully!"
+echo "All $TOTAL_RUNS experiments finished successfully."

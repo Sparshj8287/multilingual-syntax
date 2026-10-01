@@ -25,7 +25,14 @@ results*/
 plots*/
 feature-circuits/
 RelP/
+linzen_das_data/
 ravel/
+code_syntax.zip
+data_syntax.zip
+corrupted_obj_rel_across_anim/
+data_positions/
+tables_das_seeds/
+MAR_metric/outputs*
 # ------------------------------------------------------------------
 # External codebases cloned for reference; keep out of this repo
 # ------------------------------------------------------------------
@@ -34,6 +41,7 @@ polar_probe/
 experiments/
 visualizations_plots/
 experiments_struct_probe/
+linear_classifier/
 temp*.yaml
 output*.txt
 # ------------------------------------------------------------------

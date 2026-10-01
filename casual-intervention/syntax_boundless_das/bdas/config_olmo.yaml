@@ -4,9 +4,9 @@ model:
 
 dataset:
   data_root: ../data/data_generators/templates/data
-  dataset_name: obj_rel_across_anim
+  dataset_name: obj_rel_across_anim_2
   variation: bow
-  NUA: [1,2,3,4]
+  NUA: [4]
   train_split_dir: train
   test_split_dir: test
   file_name_template: "{dataset_name}_pairs_{variation}_{nua}.jsonl"
@@ -30,17 +30,17 @@ intervention:
   unit: pos
   # Used by train_multi_boundless_das.py: fixed number of rotated dimensions.
   num_dim: 1
-  intervene_direction: base_to_source
+  intervene_direction: source_to_base
 training:
   seed: 42
   # Evaluate the randomly initialized rotation/boundary without optimizer updates.
-  random_rotation_eval: true
+  random_rotation_eval: false
   # Base batch sizes used for 1 attractor (NUA=1).
   # For NUA=n, script uses: floor(base_batch_size / 2^(n-1)).
-  batch_size: 1280
-  eval_batch_size: 1280
+  batch_size: 4096
+  eval_batch_size: 4096
   min_batch_size: 1
-  epochs: 20
+  epochs: 3
   early_stopping:
     enabled: true
     monitor_metric: test_accuracy
@@ -48,7 +48,7 @@ training:
     min_delta: 0.005
   best_rotation_checkpoint:
     enabled: true
-    root_dir: checkpoints
+    root_dir: checkpoints_das_full_with_saved_boundaries
     file_name: best_rotation_checkpoint.pt
   gradient_accumulation_steps: 1
 
@@ -66,7 +66,10 @@ training:
   log_every_steps: 20
 
 output:
-  root_dir: results_das_random
+  root_dir: results_das_full_with_saved_boundaries
+  seed_directory:
+    enabled: true
+    name_template: "seed_{seed}"
   before_training_log: 50_samples_before_training.txt
   after_training_log: 50_samples_after_training.txt
   epoch_tracking:

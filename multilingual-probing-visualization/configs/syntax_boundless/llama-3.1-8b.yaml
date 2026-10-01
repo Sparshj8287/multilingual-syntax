@@ -17,7 +17,7 @@ dataset:
     variations: [linear, bow]
     sentence_type: base_sentence
 
-    attractor_counts: [1, 2, 3, 4]
+    attractor_counts: [4]
   corpus:
     root_template: datasets/syntax_boundless_das_ready/{dataset_name}/{variation}/{sentence_type}/attractors_{attractor_count}
     train_path: train.conllu
@@ -30,15 +30,15 @@ model:
   use_disk: True
   layers: [0, 5, 10, 15, 20, 25,30]
 decoder_model:
-  model_name: /home/models/Llama-3.1-8B
+  model_name: meta-llama/Llama-3.1-8B
   activation_name: resid_post
   layer: 16
   batch_size: 5192
   dtype: bfloat16
   padding_side: right
   use_vendor_transformer_lens: True
-  cache_dir: /home/sparsh/.cache/huggingface
-  local_path: none
+  cache_dir: /home/models/Llama-3.1-8B
+  local_path: /home/models/Llama-3.1-8B
 probe:
   task_signature: word_pair
   task_name: parse-distance
@@ -53,6 +53,7 @@ probe_training:
   angular_lambda: 10
 reporting:
   root: experiments/syntax_boundless
+  group_by_seed: True
   layout: corpus
   observation_paths:
     train_path: train.observations
@@ -66,4 +67,4 @@ reporting:
     - spearmanr
     - uuas
     - polar_metrics
-seed: 42
+seed: 1120

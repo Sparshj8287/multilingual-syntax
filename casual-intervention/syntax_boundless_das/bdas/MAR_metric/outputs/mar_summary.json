@@ -1,0 +1,230 @@
+{
+  "results_root": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/results_das_full_with_saved_boundaries",
+  "direction": "all",
+  "nua": 4,
+  "mar_results": [
+    {
+      "model": "llama-3.1-8b",
+      "direction": "base_to_source",
+      "syntax_layer": 25,
+      "heuristic_layer": 25,
+      "comparison": "syntax_linear_vs_prox",
+      "mar": 0.42167335748672485,
+      "syntax_m": 238,
+      "heuristic_m": 500,
+      "syntax_result": "llama-3.1-8b/obj_rel_across_anim/linear/4_attractor/base_to_source/layer_25/result.json",
+      "heuristic_result": "llama-3.1-8b/obj_rel_across_anim_2/linear/4_attractor/base_to_source/layer_25/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim/linear/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim_2/linear/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "base_to_source",
+      "syntax_layer": 25,
+      "heuristic_layer": 25,
+      "comparison": "syntax_bow_vs_maj",
+      "mar": 0.4001030921936035,
+      "syntax_m": 239,
+      "heuristic_m": 557,
+      "syntax_result": "llama-3.1-8b/obj_rel_across_anim/bow/4_attractor/base_to_source/layer_25/result.json",
+      "heuristic_result": "llama-3.1-8b/obj_rel_across_anim_2/bow/4_attractor/base_to_source/layer_25/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim/bow/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim_2/bow/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "source_to_base",
+      "syntax_layer": 25,
+      "heuristic_layer": 20,
+      "comparison": "syntax_linear_vs_prox",
+      "mar": 0.37774553894996643,
+      "syntax_m": 540,
+      "heuristic_m": 212,
+      "syntax_result": "llama-3.1-8b/obj_rel_across_anim/linear/4_attractor/source_to_base/layer_25/result.json",
+      "heuristic_result": "llama-3.1-8b/obj_rel_across_anim_2/linear/4_attractor/source_to_base/layer_20/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim/linear/4_attractor/source_to_base/layer_25/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim_2/linear/4_attractor/source_to_base/layer_20/best_rotation_checkpoint.pt"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "source_to_base",
+      "syntax_layer": 20,
+      "heuristic_layer": 25,
+      "comparison": "syntax_bow_vs_maj",
+      "mar": 0.3848221004009247,
+      "syntax_m": 614,
+      "heuristic_m": 250,
+      "syntax_result": "llama-3.1-8b/obj_rel_across_anim/bow/4_attractor/source_to_base/layer_20/result.json",
+      "heuristic_result": "llama-3.1-8b/obj_rel_across_anim_2/bow/4_attractor/source_to_base/layer_25/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim/bow/4_attractor/source_to_base/layer_20/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/llama-3.1-8b/obj_rel_across_anim_2/bow/4_attractor/source_to_base/layer_25/best_rotation_checkpoint.pt"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "base_to_source",
+      "syntax_layer": 25,
+      "heuristic_layer": 25,
+      "comparison": "syntax_linear_vs_prox",
+      "mar": 0.5479021072387695,
+      "syntax_m": 366,
+      "heuristic_m": 319,
+      "syntax_result": "olmo-3-7b/obj_rel_across_anim/linear/4_attractor/base_to_source/layer_25/result.json",
+      "heuristic_result": "olmo-3-7b/obj_rel_across_anim_2/linear/4_attractor/base_to_source/layer_25/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim/linear/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim_2/linear/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "base_to_source",
+      "syntax_layer": 25,
+      "heuristic_layer": 25,
+      "comparison": "syntax_bow_vs_maj",
+      "mar": 0.5380064249038696,
+      "syntax_m": 346,
+      "heuristic_m": 370,
+      "syntax_result": "olmo-3-7b/obj_rel_across_anim/bow/4_attractor/base_to_source/layer_25/result.json",
+      "heuristic_result": "olmo-3-7b/obj_rel_across_anim_2/bow/4_attractor/base_to_source/layer_25/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim/bow/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim_2/bow/4_attractor/base_to_source/layer_25/best_rotation_checkpoint.pt"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "source_to_base",
+      "syntax_layer": 25,
+      "heuristic_layer": 20,
+      "comparison": "syntax_linear_vs_prox",
+      "mar": 0.5501945614814758,
+      "syntax_m": 359,
+      "heuristic_m": 341,
+      "syntax_result": "olmo-3-7b/obj_rel_across_anim/linear/4_attractor/source_to_base/layer_25/result.json",
+      "heuristic_result": "olmo-3-7b/obj_rel_across_anim_2/linear/4_attractor/source_to_base/layer_20/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim/linear/4_attractor/source_to_base/layer_25/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim_2/linear/4_attractor/source_to_base/layer_20/best_rotation_checkpoint.pt"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "source_to_base",
+      "syntax_layer": 15,
+      "heuristic_layer": 25,
+      "comparison": "syntax_bow_vs_maj",
+      "mar": 0.4699350893497467,
+      "syntax_m": 457,
+      "heuristic_m": 347,
+      "syntax_result": "olmo-3-7b/obj_rel_across_anim/bow/4_attractor/source_to_base/layer_15/result.json",
+      "heuristic_result": "olmo-3-7b/obj_rel_across_anim_2/bow/4_attractor/source_to_base/layer_25/result.json",
+      "syntax_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim/bow/4_attractor/source_to_base/layer_15/best_rotation_checkpoint.pt",
+      "heuristic_checkpoint": "/home/sparsh/projects/multilingual-syntax/casual-intervention/syntax_boundless_das/bdas/checkpoints_das_full_with_saved_boundaries/olmo-3-7b/obj_rel_across_anim_2/bow/4_attractor/source_to_base/layer_25/best_rotation_checkpoint.pt"
+    }
+  ],
+  "boundary_m_by_hypothesis": [
+    {
+      "model": "llama-3.1-8b",
+      "direction": "base_to_source",
+      "layers": "25;25",
+      "hypothesis": "syn",
+      "m": 237.5,
+      "source_count": 2,
+      "sources": "llama-3.1-8b/obj_rel_across_anim/linear/4_attractor/base_to_source/layer_25/result.json;llama-3.1-8b/obj_rel_across_anim/bow/4_attractor/base_to_source/layer_25/result.json"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "base_to_source",
+      "layers": "25",
+      "hypothesis": "prox",
+      "m": 499.0,
+      "source_count": 1,
+      "sources": "llama-3.1-8b/obj_rel_across_anim_2/linear/4_attractor/base_to_source/layer_25/result.json"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "base_to_source",
+      "layers": "25",
+      "hypothesis": "maj",
+      "m": 556.0,
+      "source_count": 1,
+      "sources": "llama-3.1-8b/obj_rel_across_anim_2/bow/4_attractor/base_to_source/layer_25/result.json"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "source_to_base",
+      "layers": "25;20",
+      "hypothesis": "syn",
+      "m": 576.0,
+      "source_count": 2,
+      "sources": "llama-3.1-8b/obj_rel_across_anim/linear/4_attractor/source_to_base/layer_25/result.json;llama-3.1-8b/obj_rel_across_anim/bow/4_attractor/source_to_base/layer_20/result.json"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "source_to_base",
+      "layers": "20",
+      "hypothesis": "prox",
+      "m": 211.0,
+      "source_count": 1,
+      "sources": "llama-3.1-8b/obj_rel_across_anim_2/linear/4_attractor/source_to_base/layer_20/result.json"
+    },
+    {
+      "model": "llama-3.1-8b",
+      "direction": "source_to_base",
+      "layers": "25",
+      "hypothesis": "maj",
+      "m": 249.0,
+      "source_count": 1,
+      "sources": "llama-3.1-8b/obj_rel_across_anim_2/bow/4_attractor/source_to_base/layer_25/result.json"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "base_to_source",
+      "layers": "25;25",
+      "hypothesis": "syn",
+      "m": 355.0,
+      "source_count": 2,
+      "sources": "olmo-3-7b/obj_rel_across_anim/linear/4_attractor/base_to_source/layer_25/result.json;olmo-3-7b/obj_rel_across_anim/bow/4_attractor/base_to_source/layer_25/result.json"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "base_to_source",
+      "layers": "25",
+      "hypothesis": "prox",
+      "m": 318.0,
+      "source_count": 1,
+      "sources": "olmo-3-7b/obj_rel_across_anim_2/linear/4_attractor/base_to_source/layer_25/result.json"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "base_to_source",
+      "layers": "25",
+      "hypothesis": "maj",
+      "m": 369.0,
+      "source_count": 1,
+      "sources": "olmo-3-7b/obj_rel_across_anim_2/bow/4_attractor/base_to_source/layer_25/result.json"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "source_to_base",
+      "layers": "25;15",
+      "hypothesis": "syn",
+      "m": 407.0,
+      "source_count": 2,
+      "sources": "olmo-3-7b/obj_rel_across_anim/linear/4_attractor/source_to_base/layer_25/result.json;olmo-3-7b/obj_rel_across_anim/bow/4_attractor/source_to_base/layer_15/result.json"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "source_to_base",
+      "layers": "20",
+      "hypothesis": "prox",
+      "m": 340.0,
+      "source_count": 1,
+      "sources": "olmo-3-7b/obj_rel_across_anim_2/linear/4_attractor/source_to_base/layer_20/result.json"
+    },
+    {
+      "model": "olmo-3-7b",
+      "direction": "source_to_base",
+      "layers": "25",
+      "hypothesis": "maj",
+      "m": 346.0,
+      "source_count": 1,
+      "sources": "olmo-3-7b/obj_rel_across_anim_2/bow/4_attractor/source_to_base/layer_25/result.json"
+    }
+  ],
+  "missing": []
+}

@@ -1,0 +1,79 @@
+# Experiment 3: position-resolved Boundless DAS (reviewers Dk4g / H2Df).
+# Same DAS settings as the main 4-attractor runs; only the intervention token moves.
+#   position: last -> final prefix token (reproduces the published setting)
+#             p0   -> last sub-token of the main subject head
+#             p4   -> last sub-token of the final attractor head
+# dataset.data_root must point at the tokenizer-specific annotated tree built by
+# annotate_positions.py, because token indices differ per tokenizer.
+
+model:
+  name: gemma-3-12b-pt
+  path: google/gemma-3-12b-pt
+
+dataset:
+  data_root: ../data/data_generators/templates/data_positions/gemma-3-12b-pt
+  dataset_name: obj_rel_across_anim
+  variation: linear
+  NUA: [4]
+  train_split_dir: train
+  test_split_dir: test
+  file_name_template: "{dataset_name}_pairs_{variation}_{nua}.jsonl"
+  train_size: 19000
+  val_size: 1000
+  test_size: 0
+  shuffle_seed: 42
+
+runtime:
+  device: cuda
+  device_map: auto
+  torch_dtype: bfloat16
+  use_fast_tokenizer: true
+
+intervention:
+  layer: [0, 10, 20, 30, 40]
+  component: block_output
+  unit: pos
+  position: p0
+  num_dim: 1
+  intervene_direction: source_to_base
+
+training:
+  seed: 42
+  random_rotation_eval: false
+  batch_size: 2048
+  eval_batch_size: 2048
+  min_batch_size: 1
+  epochs: 20
+  early_stopping:
+    enabled: true
+    monitor_metric: test_accuracy
+    patience: 3
+    min_delta: 0.005
+  best_rotation_checkpoint:
+    enabled: true
+    root_dir: checkpoints_das_positions
+    file_name: best_rotation_checkpoint.pt
+  gradient_accumulation_steps: 1
+  init_lr: 1.0e-4
+  regularization_coefficient: 0.001
+  temperature_schedule: [1.0e-2, 1.0e-7]
+  lr_rotate: 1.0e-3
+  lr_boundary: 1.0e-2
+  warmup_ratio: 0.1
+  temperature_start: 50.0
+  temperature_end: 0.1
+  boundary_loss_weight: 1.0
+  log_every_steps: 20
+
+output:
+  root_dir: results_das_positions
+  seed_directory:
+    enabled: true
+    name_template: "seed_{seed}"
+  before_training_log: 50_samples_before_training.txt
+  after_training_log: 50_samples_after_training.txt
+  epoch_tracking:
+    enabled: false
+    sample_count: 10
+    file_name: epoch_test_tracking.txt
+  result_file: result.json

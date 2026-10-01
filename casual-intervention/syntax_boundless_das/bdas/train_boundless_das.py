@@ -14,7 +14,12 @@ import yaml
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
-from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    get_linear_schedule_with_warmup,
+)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CASUAL_INTERVENTION_ROOT = SCRIPT_DIR.parent.parent
@@ -106,6 +111,7 @@ def load_model_and_tokenizer(
     model_path: str,
     runtime_cfg: dict[str, Any],
     hf_token: str | None,
+    random_init: bool = False,
 ):
     use_fast = bool(runtime_cfg.get("use_fast_tokenizer", True))
     device = torch.device(runtime_cfg.get("device", "cuda"))
@@ -118,6 +124,12 @@ def load_model_and_tokenizer(
         device_map = {"": "cpu"}
     if device.type == "cpu" and torch_dtype in {torch.float16, torch.bfloat16}:
         torch_dtype = torch.float32
+    if random_init and device_map is not None:
+        print(
+            "[setup] model.random_init=true; ignoring runtime.device_map because "
+            "random models are initialized from config before being moved to device"
+        )
+        device_map = None
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_path,
@@ -132,14 +144,24 @@ def load_model_and_tokenizer(
         else:
             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch_dtype if torch_dtype is not None else "auto",
-        device_map=device_map,
-        token=hf_token,
-    )
+    if random_init:
+        model_config = AutoConfig.from_pretrained(model_path, token=hf_token)
+        if tokenizer.pad_token_id is not None:
+            model_config.pad_token_id = tokenizer.pad_token_id
+        model_kwargs = {}
+        if isinstance(torch_dtype, torch.dtype):
+            model_kwargs["torch_dtype"] = torch_dtype
+        model = AutoModelForCausalLM.from_config(model_config, **model_kwargs)
+        print(f"Loaded randomly initialized model from config: {model_path}")
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch_dtype if torch_dtype is not None else "auto",
+            device_map=device_map,
+            token=hf_token,
+        )
+        print("Loaded pretrained model name:", model.name_or_path)
 
-    print("Loaded model name:", model.name_or_path)
     if model.get_input_embeddings().num_embeddings < len(tokenizer):
         model.resize_token_embeddings(len(tokenizer))
     if model.generation_config.pad_token_id is None:
@@ -670,12 +692,80 @@ def load_intervention_state(
             )
 
 
+def summarize_intervention_boundaries(
+    intervenable: IntervenableModel,
+) -> list[dict[str, float | int | str]]:
+    summaries: list[dict[str, float | int | str]] = []
+    for intervention_key, intervention in intervenable.interventions.items():
+        boundary_tensor = intervention.intervention_boundaries.detach().cpu().flatten()[0]
+        raw_boundary = float(boundary_tensor.item())
+        effective_boundary = float(torch.clamp(boundary_tensor, 1e-3, 1).item())
+        embed_dim = int(intervention.embed_dim)
+        summaries.append(
+            {
+                "intervention": str(intervention_key),
+                "embed_dim": embed_dim,
+                "b1": 0.0,
+                "boundary_raw": raw_boundary,
+                "boundary_clamped": effective_boundary,
+                "b2_raw": raw_boundary * embed_dim,
+                "b2": effective_boundary * embed_dim,
+            }
+        )
+    return summaries
+
+
+def serialize_intervention_boundary_masks(
+    intervenable: IntervenableModel,
+) -> list[dict[str, Any]]:
+    masks: list[dict[str, Any]] = []
+    for intervention_key, intervention in intervenable.interventions.items():
+        boundary_tensor = intervention.intervention_boundaries.detach().cpu().flatten()[0]
+        boundary_clamped = torch.clamp(boundary_tensor, 1e-3, 1)
+        embed_dim = int(intervention.embed_dim)
+        b1 = torch.tensor(0.0)
+        b2 = boundary_clamped * embed_dim
+        temperature = intervention.temperature.detach().float().cpu().flatten()[0]
+        population = torch.arange(0, embed_dim, dtype=torch.float32)
+        boundary_mask = torch.sigmoid((population - b1) / temperature) * torch.sigmoid(
+            (b2 - population) / temperature
+        )
+        masks.append(
+            {
+                "intervention": str(intervention_key),
+                "embed_dim": embed_dim,
+                "temperature": float(temperature.item()),
+                "b1": float(b1.item()),
+                "b2": float(b2.item()),
+                "mask_min": float(boundary_mask.min().item()),
+                "mask_max": float(boundary_mask.max().item()),
+                "mask_values": boundary_mask.tolist(),
+            }
+        )
+    return masks
+
+
 def normalize_nested_config(raw_value: Any, *, enabled_key: str = "enabled") -> dict[str, Any]:
     if isinstance(raw_value, dict):
         return raw_value
     if raw_value is None:
         return {}
     return {enabled_key: bool(raw_value)}
+
+
+def resolve_seed_directory(
+    output_cfg: dict[str, Any],
+    *,
+    seed: int,
+) -> str | None:
+    seed_directory_cfg = normalize_nested_config(output_cfg.get("seed_directory", {}))
+    if not bool(seed_directory_cfg.get("enabled", False)):
+        return None
+    name_template = str(seed_directory_cfg.get("name_template", "seed_{seed}"))
+    seed_dir_name = name_template.format(seed=seed).strip()
+    if not seed_dir_name:
+        raise ValueError("output.seed_directory.name_template produced an empty directory name.")
+    return seed_dir_name.replace("/", "_").replace(" ", "_")
 
 
 def build_sample_logs(
@@ -975,6 +1065,7 @@ def train(
             else:
                 stale_eval_count += 1
 
+        boundary_summary = summarize_intervention_boundaries(intervenable)
         epoch_result = {
             "epoch": epoch + 1,
             "train_accuracy": train_accuracy,
@@ -993,6 +1084,8 @@ def train(
             if monitor_metric_name == "val_accuracy"
             else None,
             "early_stopping_stale_evals": stale_eval_count,
+            "boundaries": boundary_summary,
+            "boundary_b2": boundary_summary[0]["b2"] if boundary_summary else None,
         }
         if test_metrics is not None:
             epoch_result["test_accuracy"] = test_metrics["accuracy"]
@@ -1081,6 +1174,7 @@ def main() -> None:
     if not model_path:
         raise ValueError("model.path is required in config.")
     model_name = str(model_cfg.get("name", model_path)).strip()
+    random_model_init = bool(model_cfg.get("random_init", False))
 
     intervene_direction = str(
         intervention_cfg.get("intervene_direction", "source_to_base")
@@ -1111,6 +1205,7 @@ def main() -> None:
         model_path,
         runtime_cfg,
         hf_token,
+        random_model_init,
     )
     model_device = next(model.parameters()).device
 
@@ -1160,6 +1255,11 @@ def main() -> None:
 
     variation_result_dir = output_root / model_dir_name / dataset_name / variation
     variation_checkpoint_dir = checkpoint_root / model_dir_name / dataset_name / variation
+    seed_dir_name = resolve_seed_directory(output_cfg, seed=train_seed)
+    if seed_dir_name is not None:
+        variation_result_dir = variation_result_dir / seed_dir_name
+        variation_checkpoint_dir = variation_checkpoint_dir / seed_dir_name
+        print(f"[setup] writing results/checkpoints under {seed_dir_name}")
     variation_result_dir.mkdir(parents=True, exist_ok=True)
 
     all_nua_summary: list[dict[str, Any]] = []
@@ -1330,6 +1430,7 @@ def main() -> None:
 
             baseline_val_metrics = evaluate(intervenable, val_dataloader, training_device)
             baseline_test_metrics = evaluate(intervenable, test_dataloader, training_device)
+            baseline_boundary_summary = summarize_intervention_boundaries(intervenable)
             print(
                 f"[baseline][nua={nua}][layer {layer}] val_acc={baseline_val_metrics['accuracy']:.4f} "
                 f"test_acc={baseline_test_metrics['accuracy']:.4f}"
@@ -1435,6 +1536,7 @@ def main() -> None:
                 }
                 final_val_metrics = baseline_val_metrics
                 final_test_metrics = baseline_test_metrics
+                final_boundary_summary = baseline_boundary_summary
                 print(
                     f"[random][nua={nua}][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
                     f"test_acc={final_test_metrics['accuracy']:.4f}"
@@ -1460,6 +1562,7 @@ def main() -> None:
 
                 final_val_metrics = evaluate(intervenable, val_dataloader, training_device)
                 final_test_metrics = evaluate(intervenable, test_dataloader, training_device)
+                final_boundary_summary = summarize_intervention_boundaries(intervenable)
                 print(
                     f"[final][nua={nua}][layer {layer}] val_acc={final_val_metrics['accuracy']:.4f} "
                     f"test_acc={final_test_metrics['accuracy']:.4f}"
@@ -1486,10 +1589,31 @@ def main() -> None:
             after_path.write_text(after_text, encoding="utf-8")
             # print(after_text)
 
+            boundary_mask_path = layer_result_dir / str(
+                output_cfg.get("boundary_mask_file", "boundary_mask.json")
+            )
+            boundary_mask_payload = {
+                "model": model_name,
+                "dataset_name": dataset_name,
+                "variation": variation,
+                "nua": nua,
+                "direction": intervene_direction,
+                "layer": layer,
+                "component": component,
+                "unit": unit,
+                "position": "last_token_of_prefix",
+                "boundaries": final_boundary_summary,
+                "boundary_masks": serialize_intervention_boundary_masks(intervenable),
+            }
+            with boundary_mask_path.open("w", encoding="utf-8") as handle:
+                json.dump(boundary_mask_payload, handle, indent=2)
+            print(f"[saved] {boundary_mask_path}")
+
             result_payload = {
                 "model": {
                     "name": model_name,
                     "path": model_path,
+                    "random_init": random_model_init,
                     "output_dir_name": model_dir_name,
                 },
                 "dataset": {
@@ -1551,10 +1675,17 @@ def main() -> None:
                 "baseline": {
                     "val": baseline_val_metrics,
                     "test": baseline_test_metrics,
+                    "boundaries": baseline_boundary_summary,
                 },
                 "final": {
                     "val": final_val_metrics,
                     "test": final_test_metrics,
+                    "boundaries": final_boundary_summary,
+                    "boundary_b2": (
+                        final_boundary_summary[0]["b2"]
+                        if final_boundary_summary
+                        else None
+                    ),
                 },
                 "artifacts": {
                     "before_training_log": str(before_path),
@@ -1565,6 +1696,7 @@ def main() -> None:
                     "best_rotation_checkpoint": training_summary[
                         "best_rotation_checkpoint"
                     ]["path"],
+                    "boundary_mask": str(boundary_mask_path),
                 },
             }
             result_path = layer_result_dir / str(
@@ -1580,6 +1712,11 @@ def main() -> None:
                     "result_file": str(result_path),
                     "final_test_accuracy": final_test_metrics["accuracy"],
                     "final_val_accuracy": final_val_metrics["accuracy"],
+                    "final_boundary_b2": (
+                        final_boundary_summary[0]["b2"]
+                        if final_boundary_summary
+                        else None
+                    ),
                 }
             )
 

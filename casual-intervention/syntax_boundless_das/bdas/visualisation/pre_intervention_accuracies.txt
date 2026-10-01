@@ -1,0 +1,35 @@
+======================================================================
+                 Pre-Intervention Accuracy Baselines                  
+======================================================================
+
+Model: gemma-3-12b-pt
+---------------------
+  Hypothesis: Syntax (H_syn)
+    Direction: SG -> PL | Baseline Accuracy: 59.1333%   (0.591333)
+    Direction: PL -> SG | Baseline Accuracy: 39.5000%   (0.395000)
+
+  Hypothesis: Proximity (H_prox)
+    Direction: SG -> PL | Baseline Accuracy: 47.6667%   (0.476667)
+    Direction: PL -> SG | Baseline Accuracy: 67.6333%   (0.676333)
+
+  Hypothesis: Majority (H_maj)
+    Direction: SG -> PL | Baseline Accuracy: 34.4333%   (0.344333)
+    Direction: PL -> SG | Baseline Accuracy: 53.9000%   (0.539000)
+
+======================================================================
+
+Model: qwen-3-8b
+----------------
+  Hypothesis: Syntax (H_syn)
+    Direction: SG -> PL | Baseline Accuracy: 19.5833%   (0.195833)
+    Direction: PL -> SG | Baseline Accuracy: 73.0167%   (0.730167)
+
+  Hypothesis: Proximity (H_prox)
+    Direction: SG -> PL | Baseline Accuracy: 85.6667%   (0.856667)
+    Direction: PL -> SG | Baseline Accuracy: 32.8667%   (0.328667)
+
+  Hypothesis: Majority (H_maj)
+    Direction: SG -> PL | Baseline Accuracy: 77.0000%   (0.770000)
+    Direction: PL -> SG | Baseline Accuracy: 24.1667%   (0.241667)
+
+======================================================================

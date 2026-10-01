@@ -364,6 +364,10 @@ def main() -> None:
         raise ValueError("output.epoch_tracking.sample_count must be > 0")
 
     variation_result_dir = output_root / model_dir_name / dataset_name / variation
+    seed_dir_name = base.resolve_seed_directory(output_cfg, seed=train_seed)
+    if seed_dir_name is not None:
+        variation_result_dir = variation_result_dir / seed_dir_name
+        print(f"[setup] writing results under {seed_dir_name}")
     variation_result_dir.mkdir(parents=True, exist_ok=True)
 
     all_nua_summary: list[dict[str, Any]] = []

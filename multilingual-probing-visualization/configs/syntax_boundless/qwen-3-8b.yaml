@@ -13,39 +13,37 @@ dataset:
     - langs
     - embeddings
   selector:
-    dataset_name: obj_rel_across_anim
     dataset_names: [obj_rel_across_anim, obj_rel_across_anim_2]
-    variation: linear
     variations: [linear, bow]
     sentence_type: base_sentence
 
-    attractor_counts: [1, 2, 3, 4]
+    attractor_counts: [4]
   corpus:
     root_template: datasets/syntax_boundless_das_ready/{dataset_name}/{variation}/{sentence_type}/attractors_{attractor_count}
     train_path: train.conllu
     dev_path: dev.conllu
     test_path: test.conllu
-  batch_size: 16
+  batch_size: 7192
 model:
   hidden_dim: 4096
   model_type: decoder-transformer-lens
   use_disk: True
   model_layer: 16
-  layers: [0, 5, 10, 15]
+  layers: [0, 5, 10, 15, 20, 25, 30,35]
 decoder_model:
   model_name: Qwen/Qwen3-8B-Base
   activation_name: resid_post
   layer: 16
-  batch_size: 8
+  batch_size: 7192
   dtype: bfloat16
   padding_side: right
   use_vendor_transformer_lens: True
-  cache_dir: /home/sparsh/.cache/huggingface
+  cache_dir: /home/sparsh/.cache/huggingface/hub
   local_path: none
 probe:
   task_signature: word_pair
   task_name: parse-distance
-  maximum_rank: 128
+  maximum_rank: 4096
   psd_parameters: True
   diagonal: False
   params_path: predictor.params
@@ -56,6 +54,7 @@ probe_training:
   angular_lambda: 10
 reporting:
   root: experiments/syntax_boundless
+  group_by_seed: True
   layout: corpus
   observation_paths:
     train_path: train.observations
@@ -69,4 +68,4 @@ reporting:
     - spearmanr
     - uuas
     - polar_metrics
-seed: 42
+seed: 1120

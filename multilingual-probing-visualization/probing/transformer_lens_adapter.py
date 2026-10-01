@@ -76,7 +76,7 @@ class TransformerLensEmbeddingExtractor:
     elif not use_vendor:
       tqdm.write("[TLens] Using system transformer_lens (vendored copy disabled).")
     try:
-      from transformers import AutoTokenizer
+      from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as exc:
       raise ImportError(
           "TransformerLensEmbeddingExtractor requires the transformers package."
@@ -97,28 +97,16 @@ class TransformerLensEmbeddingExtractor:
     model_name = decoder_cfg.get('model_name')
     if not model_name:
       raise ValueError("decoder_model.model_name is required (even when using a local_path).")
-    model_source = self.local_model_path or model_name
-    model_source = os.path.expanduser(model_source)
-    is_local_model_source = os.path.exists(model_source)
-    model_kwargs = {
-        'device': str(self.device),
-        'dtype': dtype,
-        'fold_ln': decoder_cfg.get('fold_ln', False),
-        'center_writing_weights': decoder_cfg.get('center_writing_weights', False),
-    }
-    if self.cache_dir:
-      model_kwargs['cache_dir'] = self.cache_dir
-    if is_local_model_source:
-      model_kwargs['local_files_only'] = True
-    self.model = HookedTransformer.from_pretrained(model_source, **model_kwargs)
-    self.model.eval()
-    self.hidden_size = self.model.cfg.d_model
-    self.total_layers = self.model.cfg.n_layers
-    self.layer_index = self._normalize_layer_index(self.layer_index, self.total_layers)
-
+    if self.local_model_path:
+      model_source = model_name
+      hf_model = self._load_local_hf_model(AutoModelForCausalLM, self.local_model_path, dtype)
+    else:
+      model_source = os.path.expanduser(model_name)
+      hf_model = None
+    is_local_model_source = bool(self.local_model_path)
     tokenizer_kwargs = {'use_fast': True, 'padding_side': decoder_cfg.get('padding_side', 'right')}
-    tokenizer_source = model_source if is_local_model_source else model_name
-    if self.cache_dir:
+    tokenizer_source = self.local_model_path if is_local_model_source else model_name
+    if self.cache_dir and not is_local_model_source:
       tokenizer_kwargs['cache_dir'] = self.cache_dir
     if is_local_model_source:
       tokenizer_kwargs['local_files_only'] = True
@@ -127,6 +115,40 @@ class TransformerLensEmbeddingExtractor:
       self.tokenizer.pad_token = self.tokenizer.eos_token or self.tokenizer.bos_token
     if self.tokenizer.pad_token is None:
       raise ValueError("Tokenizer must expose either a PAD, EOS, or BOS token for padding.")
+
+    model_kwargs = {
+        'device': str(self.device),
+        'dtype': dtype,
+        'fold_ln': decoder_cfg.get('fold_ln', False),
+        'center_writing_weights': decoder_cfg.get('center_writing_weights', False),
+        'tokenizer': self.tokenizer,
+        'default_padding_side': decoder_cfg.get('padding_side', 'right'),
+    }
+    if self.cache_dir:
+      model_kwargs['cache_dir'] = self.cache_dir
+    if hf_model is not None:
+      model_kwargs['hf_model'] = hf_model
+    self.model = HookedTransformer.from_pretrained(model_source, **model_kwargs)
+    self.model.eval()
+    self.hidden_size = self.model.cfg.d_model
+    self.total_layers = self.model.cfg.n_layers
+    self.layer_index = self._normalize_layer_index(self.layer_index, self.total_layers)
+
+  @staticmethod
+  def _load_local_hf_model(auto_model_cls, local_path: str, dtype):
+    """Load HF weights from disk while keeping TransformerLens' official model id."""
+    try:
+      return auto_model_cls.from_pretrained(
+          local_path,
+          dtype=dtype,
+          local_files_only=True,
+      )
+    except TypeError:
+      return auto_model_cls.from_pretrained(
+          local_path,
+          torch_dtype=dtype,
+          local_files_only=True,
+      )
 
   @staticmethod
   def _parse_dtype(dtype_str: str):

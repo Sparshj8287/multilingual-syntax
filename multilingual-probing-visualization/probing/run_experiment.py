@@ -456,6 +456,32 @@ def choose_regimen_class(args):
     return regimen.PolarProbeRegimen
   return regimen.ProbeRegimen
 
+
+def reset_torch_seed_for_probe_initialization(args):
+  """Reset PyTorch RNG so each layer starts from the same probe matrix."""
+  seed = args.get('seed')
+  if seed is None:
+    return
+  torch.manual_seed(seed)
+  torch.cuda.manual_seed_all(seed)
+
+
+def apply_seed_to_reporting_root(yaml_args):
+  """Optionally place experiment outputs under a seed-specific subdirectory."""
+  reporting_cfg = yaml_args.get('reporting', {})
+  if not reporting_cfg.get('group_by_seed', False):
+    return
+  seed = yaml_args.get('seed')
+  if seed is None:
+    return
+  root = reporting_cfg.get('root', '')
+  seed_dir = f"seed_{seed}"
+  normalized_root = os.path.normpath(root)
+  if os.path.basename(normalized_root) == seed_dir:
+    return
+  reporting_cfg['root'] = os.path.join(root, seed_dir)
+
+
 def run_train_probe(args, probe, dataset, model, loss, reporter, regimen):
   """Trains a structural probe according to args.
 
@@ -533,6 +559,7 @@ def execute_experiment(args, train_probe, report_results):
   expt_reporter = reporter_class(args)
   if hasattr(expt_reporter, 'set_dataset'):
     expt_reporter.set_dataset(expt_dataset)
+  reset_torch_seed_for_probe_initialization(args)
   expt_probe = probe_class(args)
   expt_model = model_class(args)
   expt_regimen = regimen_class(args)
@@ -560,6 +587,7 @@ def setup_new_experiment_dir(args, yaml_args, reuse_results_path):
   """
   now = datetime.now()
   date_suffix = '-'.join((str(x) for x in [now.year, now.month, now.day, now.hour, now.minute, now.second, now.microsecond]))
+  apply_seed_to_reporting_root(yaml_args)
   model_layer = str(yaml_args['model']['model_layer'])
   model_suffix = '-'.join(("model-layer", model_layer, yaml_args['probe']['task_name']))
   if reuse_results_path:

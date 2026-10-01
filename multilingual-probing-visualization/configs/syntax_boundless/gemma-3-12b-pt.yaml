@@ -14,9 +14,9 @@ dataset:
     - embeddings
   selector:
     dataset_names: [obj_rel_across_anim, obj_rel_across_anim_2]
-    variations: [linear]
+    variations: [linear, bow]
     sentence_type: base_sentence
-    attractor_counts: [1,2, 3, 4]
+    attractor_counts: [4]
   # Keep this path aligned with selector fields above.
   corpus:
     root_template: datasets/syntax_boundless_das_ready/{dataset_name}/{variation}/{sentence_type}/attractors_{attractor_count}
@@ -28,7 +28,7 @@ model:
   hidden_dim: 3840
   model_type: decoder-transformer-lens
   use_disk: True
-  model_layer: 16
+  layers: [0, 5, 10, 15, 20, 25, 30,35,40,45]
 decoder_model:
   model_name: google/gemma-3-12b-pt
   activation_name: resid_post
@@ -37,7 +37,7 @@ decoder_model:
   dtype: bfloat16
   padding_side: right
   use_vendor_transformer_lens: True
-  cache_dir: /home/sparsh/.cache/huggingface
+  cache_dir: /home/sparsh/.cache/huggingface/hub
   local_path: none
 probe:
   task_signature: word_pair
@@ -53,6 +53,7 @@ probe_training:
   angular_lambda: 10
 reporting:
   root: experiments/syntax_boundless
+  group_by_seed: True
   layout: corpus
   observation_paths:
     train_path: train.observations
@@ -66,4 +67,4 @@ reporting:
     - spearmanr
     - uuas
     - polar_metrics
-seed: 42
+seed: 1120

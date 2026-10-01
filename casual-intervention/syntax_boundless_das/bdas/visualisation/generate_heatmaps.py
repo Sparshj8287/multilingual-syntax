@@ -11,8 +11,8 @@ except ImportError:
     print("Please install seaborn and matplotlib: pip install seaborn matplotlib")
     exit(1)
 
-results_dir = Path(__file__).resolve().parent.parent / "results_das_full_es"
-output_dir = Path(__file__).resolve().parent / "plots_das_full_es"
+results_dir = Path(__file__).resolve().parent.parent / "results_das_full"
+output_dir = Path(__file__).resolve().parent / "plots_das_full"
 
 output_dir.mkdir(exist_ok=True)
 

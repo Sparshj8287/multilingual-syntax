@@ -1,0 +1,13 @@
+seed,model,direction,layers,hypothesis,m,source_count,sources
+96,gemma-3-12b-pt,base_to_source,45;45,syn,221.5,2,gemma-3-12b-pt/obj_rel_across_anim/linear/seed_96/4_attractor/base_to_source/layer_45/result.json;gemma-3-12b-pt/obj_rel_across_anim/bow/seed_96/4_attractor/base_to_source/layer_45/result.json
+96,gemma-3-12b-pt,base_to_source,45,prox,419.0,1,gemma-3-12b-pt/obj_rel_across_anim_2/linear/seed_96/4_attractor/base_to_source/layer_45/result.json
+96,gemma-3-12b-pt,base_to_source,45,maj,353.0,1,gemma-3-12b-pt/obj_rel_across_anim_2/bow/seed_96/4_attractor/base_to_source/layer_45/result.json
+96,qwen-3-8b,base_to_source,30;30,syn,311.5,2,qwen-3-8b/obj_rel_across_anim/linear/seed_96/4_attractor/base_to_source/layer_30/result.json;qwen-3-8b/obj_rel_across_anim/bow/seed_96/4_attractor/base_to_source/layer_30/result.json
+96,qwen-3-8b,base_to_source,30,prox,590.0,1,qwen-3-8b/obj_rel_across_anim_2/linear/seed_96/4_attractor/base_to_source/layer_30/result.json
+96,qwen-3-8b,base_to_source,30,maj,634.0,1,qwen-3-8b/obj_rel_across_anim_2/bow/seed_96/4_attractor/base_to_source/layer_30/result.json
+1120,gemma-3-12b-pt,base_to_source,45;45,syn,282.5,2,gemma-3-12b-pt/obj_rel_across_anim/linear/seed_1120/4_attractor/base_to_source/layer_45/result.json;gemma-3-12b-pt/obj_rel_across_anim/bow/seed_1120/4_attractor/base_to_source/layer_45/result.json
+1120,gemma-3-12b-pt,base_to_source,45,prox,1275.0,1,gemma-3-12b-pt/obj_rel_across_anim_2/linear/seed_1120/4_attractor/base_to_source/layer_45/result.json
+1120,gemma-3-12b-pt,base_to_source,45,maj,341.0,1,gemma-3-12b-pt/obj_rel_across_anim_2/bow/seed_1120/4_attractor/base_to_source/layer_45/result.json
+1120,qwen-3-8b,base_to_source,30;30,syn,1399.0,2,qwen-3-8b/obj_rel_across_anim/linear/seed_1120/4_attractor/base_to_source/layer_30/result.json;qwen-3-8b/obj_rel_across_anim/bow/seed_1120/4_attractor/base_to_source/layer_30/result.json
+1120,qwen-3-8b,base_to_source,30,prox,630.0,1,qwen-3-8b/obj_rel_across_anim_2/linear/seed_1120/4_attractor/base_to_source/layer_30/result.json
+1120,qwen-3-8b,base_to_source,30,maj,650.0,1,qwen-3-8b/obj_rel_across_anim_2/bow/seed_1120/4_attractor/base_to_source/layer_30/result.json
